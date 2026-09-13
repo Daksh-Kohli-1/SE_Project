@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-sand: #F8F6F0;
+  --text-ink: #0B1F33;
+}
+
+body {
+  background-color: var(--bg-sand);
+  color: var(--text-ink);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-display {
+  font-family: 'Fraunces', serif;
+}
+
+/* Room states for cluster map */
+.room-empty { 
+  background-color: #F0FDF4; 
+  border-color: #2E7D5B; 
+  color: #166534;
+}
+.room-partial { 
+  background-color: #FFFBEB; 
+  border-color: #D97706; 
+  color: #92400E;
+}
+.room-full { 
+  background-color: #FEF2F2; 
+  border-color: #DC2626; 
+  color: #991B1B;
+}
+
+/* Card utilities */
+.nest-card {
+  background-color: #FFFFFF;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(11, 31, 51, 0.08);
+  box-shadow: 0 2px 12px -1px rgba(11, 31, 51, 0.04), 0 1px 3px rgba(11, 31, 51, 0.02);
+  transition: all 0.2s ease-in-out;
+}
+
+.nest-card:hover {
+  box-shadow: 0 8px 24px -4px rgba(11, 31, 51, 0.08);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(11, 31, 51, 0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 76, 129, 0.3);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 76, 129, 0.6);
+}
+
+/* Pulse animation for SOS */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.sos-pulse {
+  animation: pulse-ring 2s infinite ease-in-out;
+}

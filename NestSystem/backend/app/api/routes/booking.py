@@ -1,0 +1,117 @@
+import random
+import string
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.models.models import Group, User, Preference, GroupStatus, Booking, Cluster, Floor
+from app.schemas.schemas import PreferenceSubmitRequest, BookingOut
+from app.api.deps import get_current_user, require_allotment_window_open
+
+router = APIRouter(prefix="/api/booking", tags=["booking"])
+
+
+def _gen_code(length: int = 6) -> str:
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
+
+
+@router.post("/preferences")
+async def submit_preferences(
+    payload: PreferenceSubmitRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _window=Depends(require_allotment_window_open),
+):
+    """
+    Ranks the student's (or their group's) cluster preferences. This does
+    NOT allot a room by itself - allotment is driven by fee payment (see
+    app/api/routes/payments.py::_on_payment_success), so groups don't get a
+    room reserved before anyone has actually paid.
+
+    A student doesn't need to create a group first - a single student is
+    simply a group of one, created automatically here if needed.
+
+    Gated by two things:
+      1. The admin-configured allotment window (require_allotment_window_open) -
+         this whole flow is only reachable on the single "billing day".
+      2. The student must already have a hostel assigned by the gender +
+         CGPA hostel pre-allocation pass, and every cluster they rank must
+         belong to THAT hostel - a student cannot pick rooms in a hostel
+         they were never allotted to.
+    """
+    if not current_user.assigned_hostel_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You haven't been assigned a hostel yet. Hostel pre-allocation (by gender & CGPA) "
+                   "must run before room preferences can be submitted.",
+        )
+
+    if not (3 <= len(payload.preferences) <= 5):
+        raise HTTPException(status_code=400, detail="You must rank between 3 and 5 clusters")
+
+    cluster_ids = [p.cluster_id for p in payload.preferences]
+    owned_result = await db.execute(
+        select(Cluster.id)
+        .join(Floor, Floor.id == Cluster.floor_id)
+        .where(Cluster.id.in_(cluster_ids), Floor.hostel_id == current_user.assigned_hostel_id)
+    )
+    owned_ids = {row[0] for row in owned_result.all()}
+    if len(owned_ids) != len(set(cluster_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="One or more selected clusters are outside your assigned hostel.",
+        )
+
+    if not current_user.group_id:
+        code = _gen_code()
+        while (await db.execute(select(Group).where(Group.code == code))).scalar_one_or_none():
+            code = _gen_code()
+        group = Group(code=code, leader_id=current_user.id, status=GroupStatus.forming)
+        db.add(group)
+        await db.flush()
+        current_user.group_id = group.id
+        await db.commit()
+
+    group = await db.get(Group, current_user.group_id)
+    if group.leader_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the group leader can submit preferences")
+    if group.status not in (GroupStatus.forming, GroupStatus.prefs_submitted):
+        raise HTTPException(status_code=400, detail="Preferences can no longer be changed for this group")
+
+    # Replace any previously stored preferences for this group.
+    old_prefs = await db.execute(select(Preference).where(Preference.group_id == group.id))
+    for p in old_prefs.scalars().all():
+        await db.delete(p)
+
+    sorted_prefs = sorted(payload.preferences, key=lambda p: p.rank)
+    for p in sorted_prefs:
+        db.add(Preference(group_id=group.id, cluster_id=p.cluster_id, rank=p.rank))
+    group.status = GroupStatus.prefs_submitted
+    await db.commit()
+
+    return {
+        "message": "Preferences saved.",
+        "next_step": "Pay the hostel fee to get a room allotted. You don't need to wait for "
+                     "the rest of your group - whoever pays first gets allotted first.",
+    }
+
+
+@router.get("/status", response_model=BookingOut | None)
+async def booking_status(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not current_user.group_id:
+        return None
+    result = await db.execute(select(Booking).where(Booking.group_id == current_user.group_id))
+    booking = result.scalar_one_or_none()
+    if not booking:
+        return None
+    return BookingOut(
+        id=booking.id,
+        group_id=booking.group_id,
+        cluster_id=booking.cluster_id,
+        room_ids=booking.room_ids.split(","),
+        status=booking.status.value,
+        created_at=booking.created_at,
+        confirmed_at=booking.confirmed_at,
+    )

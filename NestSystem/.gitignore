@@ -1,0 +1,8 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+pgdata/
+.DS_Store
+to-be-deleted/
