@@ -6,10 +6,10 @@ interface BookingProgressProps {
 
 export default function BookingProgress({ currentStage }: BookingProgressProps) {
   const stages = [
-    { id: 1, label: "Account", sub: "Profile verified" },
-    { id: 2, label: "Group", sub: "Solo or 1-4 team" },
-    { id: 3, label: "Preferences", sub: "Cluster ranking" },
-    { id: 4, label: "Payment", sub: "₹60,000 fee" },
+    { id: 1, label: "Group Formation", sub: "Solo or 2-4 team" },
+    { id: 2, label: "Preferences", sub: "Cluster ranking" },
+    { id: 3, label: "Payment", sub: "₹60,000 fee" },
+    { id: 4, label: "Allotment", sub: "Alloted" },
   ];
 
   return (

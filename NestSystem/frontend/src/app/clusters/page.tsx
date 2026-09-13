@@ -103,7 +103,7 @@ export default function ClustersPage() {
         {/* Hostel Selector Tabs */}
         {hostels.length > 0 && (
           <div className="mb-6 space-y-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {/* <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <span className="text-xs font-bold uppercase tracking-wider text-slate shrink-0 mr-2">Hostel:</span>
               {hostels.map((h, i) => (
                 <button
@@ -118,7 +118,7 @@ export default function ClustersPage() {
                   🏢 {h.name} ({h.gender})
                 </button>
               ))}
-            </div>
+            </div> */}
 
             {/* Floor Selector Tabs */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1">

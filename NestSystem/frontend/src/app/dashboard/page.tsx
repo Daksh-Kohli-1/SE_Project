@@ -167,7 +167,7 @@ export default function Dashboard() {
           </div>
 
           {/* Card 3: Mess Attendance */}
-          <div className="nest-card p-5 flex flex-col justify-between">
+          {/* <div className="nest-card p-5 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs uppercase font-bold tracking-wider text-slate">Mess Attendance</span>
@@ -184,10 +184,10 @@ export default function Dashboard() {
             >
               View details <span className="group-hover:translate-x-1 transition">→</span>
             </Link>
-          </div>
+          </div> */}
 
           {/* Card 4: Active Requests */}
-          <div className="nest-card p-5 flex flex-col justify-between">
+          {/* <div className="nest-card p-5 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs uppercase font-bold tracking-wider text-slate">Active Requests</span>
@@ -206,7 +206,7 @@ export default function Dashboard() {
             >
               Track status <span className="group-hover:translate-x-1 transition">→</span>
             </Link>
-          </div>
+          </div> */}
         </div>
 
         {/* Reusable Booking Progress Component */}
@@ -217,7 +217,7 @@ export default function Dashboard() {
           {/* Left Column (2 Cols) */}
           <div className="lg:col-span-2 space-y-8">
             {/* SOS Emergency Assistance Card */}
-            <div className="bg-gradient-to-r from-crimson/10 via-white to-sand rounded-2xl p-6 border-2 border-crimson/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            {/* <div className="bg-gradient-to-r from-crimson/10 via-white to-sand rounded-2xl p-6 border-2 border-crimson/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-crimson text-white font-bold text-2xl flex items-center justify-center shadow-md sos-pulse shrink-0">
                   🚨
@@ -237,7 +237,7 @@ export default function Dashboard() {
               >
                 <span>🆘</span> SOS Emergency Assistance
               </button>
-            </div>
+            </div> */}
 
             {/* Today's Mess Menu Card */}
             <div className="nest-card p-6">
@@ -402,7 +402,7 @@ export default function Dashboard() {
             </div>
 
             {/* Quick Links Card */}
-            <div className="nest-card p-6 bg-gradient-to-br from-marine/5 to-transparent">
+            {/* <div className="nest-card p-6 bg-gradient-to-br from-marine/5 to-transparent">
               <h3 className="font-display text-lg font-bold text-ink mb-3">
                 Quick Shortcuts
               </h3>
@@ -432,7 +432,7 @@ export default function Dashboard() {
                   💳 Pay Fee
                 </Link>
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

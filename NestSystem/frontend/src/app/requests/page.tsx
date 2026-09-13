@@ -18,13 +18,8 @@ export default function RequestsPage() {
     { id: "Room cleaning", icon: "🧹", label: "Room Cleaning", desc: "Schedule room / washroom cleaning" },
     { id: "Maintenance", icon: "🔧", label: "Maintenance", desc: "Plumbing, electrical, furniture repair" },
     { id: "Leave", icon: "✈️", label: "Out-of-station Leave", desc: "Overnight & home leave pass" },
-    { id: "Day out", icon: "🏙️", label: "Day Out", desc: "City outing pass until curfew" },
     { id: "Late entry", icon: "⏰", label: "Late Entry", desc: "Late permission beyond 10:00 PM" },
-    { id: "Gate pass", icon: "🎫", label: "Gate Pass", desc: "Luggage / item movement gate pass" },
     { id: "Visitor", icon: "👥", label: "Visitor Pass", desc: "Register parent / guest visit" },
-    { id: "Parcel", icon: "📦", label: "Parcel & Courier", desc: "Track & collect security packages" },
-    { id: "Amenities", icon: "🏋️", label: "Amenities Booking", desc: "Book Gym, Laundry, Study Room" },
-    { id: "Parking", icon: "🛵", label: "Vehicle Parking", desc: "Request vehicle sticker / slot" },
     { id: "Mess complaint", icon: "🍲", label: "Mess Complaint", desc: "Food quality / hygiene feedback" },
     { id: "Emergency", icon: "🚨", label: "Emergency Alert", desc: "Immediate warden & security dispatch" },
   ];

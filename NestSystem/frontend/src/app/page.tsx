@@ -19,12 +19,12 @@ export default function Home() {
           >
             Log in
           </Link>
-          <Link
+          {/* <Link
             href="/dashboard"
             className="px-6 py-2.5 bg-marine hover:bg-ink text-white rounded-full font-bold text-sm shadow-md transition"
           >
             Explore Student Portal 👋
-          </Link>
+          </Link> */}
         </nav>
       </header>
 
@@ -42,17 +42,17 @@ export default function Home() {
         </p>
         <div className="flex flex-wrap justify-center gap-4">
           <Link
-            href="/dashboard"
+            href="/login"
             className="px-8 py-3.5 bg-coral text-white rounded-full font-bold text-base hover:bg-ink shadow-lg hover:shadow-xl transition"
           >
             Open Student Dashboard →
           </Link>
-          <Link
+          {/* <Link
             href="/login"
             className="px-8 py-3.5 border border-ink/20 bg-white text-ink rounded-full font-bold text-base hover:bg-sand transition shadow-xs"
           >
             Log in
-          </Link>
+          </Link> */}
         </div>
       </section>
 
