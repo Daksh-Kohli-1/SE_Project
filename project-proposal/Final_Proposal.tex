@@ -1,0 +1,138 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{8pt}{}
+\titleformat{\subsubsection}[runin]{\normalfont\bfseries}{}{0pt}{}[.]
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Smart Hostel Room Allocation System}
+\fancyhead[R]{UCS503 -- Project Proposal}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue,
+    pdftitle={Smart Hostel Room Allocation System - Project Proposal}
+}
+
+\title{
+    \vspace{-2cm}
+    \textbf{\Large Smart Hostel Room Allocation System}\\[0.3cm]
+    \large Project Proposal submitted for UCS503\\[0.3cm]
+    Thapar Institute of Engineering and Technology\\
+    Computer Science and Engineering Department
+}
+\author{
+    Submitted by:\\
+    Avleen Kaur \quad Roll No: 1024030403 \quad \texttt{akaur4\_be24@thapar.edu}\\
+    Rishab Kumar Jha \quad Roll No: 1024030416 \quad \texttt{rjha1\_be24@thapar.edu}\\
+    Daksh Kohli \quad Roll No: 1024030423 \quad \texttt{dkohli\_be24@thapar.edu}
+}
+\date{August 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+% ============================================================
+\section{Introduction / Problem Statement}
+\begin{itemize}[leftmargin=1.2cm]
+    \item Our institute already runs FretBox for hostel administration: it holds student master data and handles fees, complaints and gate passes.
+    \item FretBox does not, however, let students choose where they live. Rooms are assigned centrally, and friend groups coordinate their requests informally over WhatsApp, so that context is lost by the time it reaches the warden.
+    \item Students have no visibility into room or cluster availability until check-in.
+    \item Multiple groups wanting the same rooms at the same time creates a risk of double-booking, and room payment is tracked separately from allocation, so a ``reserved'' room is not always a confirmed one.
+    \item These issues only grow as enrollment and hostel occupancy increase every year.
+    \item This project proposes a self-service web platform, layered on FretBox data, where students form groups, submit preferences, and are allocated a room automatically, with payment required before final confirmation. All student and hostel records are drawn from FretBox; nothing is entered or maintained by hand.
+\end{itemize}
+
+% ============================================================
+\section{Objectives}
+Our main goal is to design and deploy a web-based hostel room allocation system that adds
+transparent, student-driven allocation on top of the institute's existing FretBox deployment.
+
+\subsection*{Specific objectives:}
+\begin{itemize}[leftmargin=1.2cm]
+    \item Replace centrally-assigned allocation with a self-service digital process, driven by data already held in FretBox.
+    \item Ensure fair, conflict-free room allocation, even when many groups apply at once.
+    \item Tie payment directly to booking confirmation, so a booking is only final once it is paid for.
+    \item Give wardens better visibility and control over the allocation process.
+    \item Deliver a working, deployable system within the project timeline.
+\end{itemize}
+
+% ============================================================
+\section{Methodology / Scope of Work}
+The project will be delivered as a web application with the following scope:
+\begin{itemize}[leftmargin=1.2cm]
+    \item Student registration and login, with profiles sourced from FretBox rather than manual entry.
+    \item Group formation and joining via a shareable code (up to four members per group).
+    \item A visual, floor-wise room/cluster map built from imported hostel data, showing live occupancy status.
+    \item Ranked preference submission by the group leader (3--5 preferred clusters).
+    \item An automated allocation engine that matches groups to rooms based on group size and preference order.
+    \item Conflict handling so that concurrent requests for the same room are resolved safely, without double allocation.
+    \item A payment step, integrated with a payment gateway, required from every group member before a booking is confirmed.
+    \item An admin/warden dashboard to view all allocations and payments, with the ability to manually reassign a room if required.
+    \item A scheduled FretBox data sync, plus packaging so the system can be set up and run with minimal configuration.
+\end{itemize}
+
+\subsection*{Testing and Validation}
+\begin{itemize}[leftmargin=1.2cm]
+    \item Confirming no two groups can be allocated the same room, even under simultaneous requests.
+    \item Checking that the full flow, from group formation to confirmed and paid booking, works end-to-end.
+    \item Verifying that admin overrides update room status correctly.
+    \item Running a live demo with a small set of test groups, including a case where two groups compete for the same room.
+\end{itemize}
+
+\subsection*{Key Risks and Mitigations}
+\begin{itemize}[leftmargin=1.2cm]
+    \item \textbf{Incomplete group payment} --- handled by releasing an unpaid reservation back to the pool after a time limit.
+    \item \textbf{Low student adoption} --- addressed by keeping the interface simple and familiar.
+    \item \textbf{Payment gateway unavailability during a demo} --- addressed with a fallback demo mode.
+\end{itemize}
+
+% ============================================================
+\section{Timeline}
+Planned over twelve weeks, with one buffer week for testing and fixes:
+
+\begin{longtable}{p{1cm}p{6.3cm}p{6.5cm}}
+\toprule
+\textbf{Week} & \textbf{Task} & \textbf{Deliverable} \\
+\midrule
+\endhead
+1  & Requirements, planning, and system/UI design & Approved plan and wireframes \\
+2  & FretBox data study; import and sync design & Data mapping and sync specification \\
+3  & Student registration, login, and profile module & Working auth and profile module \\
+4  & Group formation and joining via group code & Working group module \\
+5  & Room/cluster availability map from imported data & Live occupancy view \\
+6  & Allocation logic for 2- and 4-member groups & Core allocation engine \\
+7  & Allocation logic for 3-member groups and single applicants & Complete allocation engine \\
+8  & Redis locking and safeguards against double-booking & Conflict-safe booking flow \\
+9  & Payment gateway integration and booking confirmation & End-to-end paid booking flow \\
+10 & Admin/warden dashboard, overrides, and reconciliation & Admin module \\
+11 & Buffer week: integration testing, load testing, bug fixes & Test report \\
+12 & Documentation, deployment packaging, and final demo & Final system and report \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Resources / Budget}
+\begin{itemize}[leftmargin=1.2cm]
+    \item Team of three, with work split across frontend, backend/allocation logic, and payments/admin/testing.
+    \item Standard laptops are sufficient; no specialised lab equipment or paid software is required.
+    \item All tools planned for use are free or offer a free tier for development and demo purposes.
+    \item No external funding required; the project runs entirely on personal or university-provided infrastructure.
+\end{itemize}
+
+\end{document}
