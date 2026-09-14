@@ -13,6 +13,10 @@ from app.schemas.schemas import (
     LeaveRequestCreate, LeaveRequestOut, AmenityBookingCreate, AmenityBookingOut, NotificationOut
 )
 from app.api.deps import get_current_user
+from datetime import date as date_cls, datetime as dt
+from app.models.models import MessMenu
+from app.schemas.schemas import LivePollVoteRequest, DayMenuOut
+from app.services import mess_poll_service
 
 router = APIRouter(prefix="/api/services", tags=["services"])
 
@@ -303,3 +307,81 @@ async def trigger_emergency(
     db.add(notif)
     await db.commit()
     return {"message": "Emergency alert sent successfully to Warden and Security."}
+
+
+
+
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+# ---------- Weekly Mess Menu (student, read-only) ----------
+@router.get("/mess/menu/today", response_model=DayMenuOut)
+async def get_today_menu(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    dow = dt.now().weekday()
+    result = await db.execute(select(MessMenu).where(MessMenu.day_of_week == dow))
+    rows = {r.meal_type.value: (r.items.split(",") if r.items else []) for r in result.scalars().all()}
+    return DayMenuOut(
+        day_of_week=dow,
+        day_name=DAY_NAMES[dow],
+        breakfast=rows.get("breakfast", []),
+        lunch=rows.get("lunch", []),
+        dinner=rows.get("dinner", []),
+    )
+
+
+@router.get("/mess/menu/week", response_model=list[DayMenuOut])
+async def get_week_menu(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(MessMenu))
+    week = {i: {"breakfast": [], "lunch": [], "dinner": []} for i in range(7)}
+    for r in result.scalars().all():
+        week[r.day_of_week][r.meal_type.value] = r.items.split(",") if r.items else []
+    return [DayMenuOut(day_of_week=i, day_name=DAY_NAMES[i], **week[i]) for i in range(7)]
+
+
+# ---------- Live Meal Polling (Redis) — gated to your scheduled windows ----------
+@router.post("/mess/live-poll/vote")
+async def vote_live_poll(
+    payload: LivePollVoteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if payload.meal_type not in ("breakfast", "lunch", "dinner"):
+        raise HTTPException(status_code=400, detail="Invalid meal type")
+
+    if not mess_poll_service.is_poll_open(payload.meal_type):
+        start, end = mess_poll_service.get_poll_window(payload.meal_type)
+        raise HTTPException(
+            status_code=403,
+            detail=f"Voting for {payload.meal_type} is only open {start.strftime('%I:%M %p')} "
+                   f"- {end.strftime('%I:%M %p')}.",
+        )
+
+    today = date_cls.today().isoformat()
+    try:
+        await mess_poll_service.cast_vote(payload.meal_type, current_user.id, payload.option_index, today)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="You have already voted for this meal today.")
+    return {"message": "Vote recorded."}
+
+
+@router.get("/mess/live-poll/results")
+async def live_poll_results(
+    meal_type: str,
+    current_user: User = Depends(get_current_user),
+):
+    if meal_type not in ("breakfast", "lunch", "dinner"):
+        raise HTTPException(status_code=400, detail="Invalid meal type")
+    today = date_cls.today().isoformat()
+    tally = await mess_poll_service.get_tally(meal_type, today)
+    voted = await mess_poll_service.has_voted(meal_type, current_user.id, today)
+    start, end = mess_poll_service.get_poll_window(meal_type)
+    return {
+        "meal_type": meal_type,
+        "date": today,
+        "options": mess_poll_service.LIVE_POLL_OPTIONS,
+        "tally": tally,
+        "total_votes": sum(tally.values()),
+        "you_voted": voted,
+        "is_open": mess_poll_service.is_poll_open(meal_type),
+        "window_start": start.strftime("%H:%M"),
+        "window_end": end.strftime("%H:%M"),
+    }

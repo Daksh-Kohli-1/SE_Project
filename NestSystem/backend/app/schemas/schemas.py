@@ -339,3 +339,31 @@ class NotificationOut(BaseModel):
     category: str
     is_read: bool
     created_at: datetime
+
+
+# ---------- Mess Menu (weekly, admin-editable) ----------
+class MessMenuUpdateRequest(BaseModel):
+    items: list[str]
+
+
+class DayMenuOut(BaseModel):
+    day_of_week: int
+    day_name: str
+    breakfast: list[str]
+    lunch: list[str]
+    dinner: list[str]
+
+
+# ---------- Live meal polling (Redis-backed) ----------
+class LivePollVoteRequest(BaseModel):
+    meal_type: str  # "breakfast" | "lunch" | "dinner"
+    option_index: int
+
+
+class LivePollResultOut(BaseModel):
+    meal_type: str
+    date: str
+    options: list[str]
+    tally: dict[int, int]
+    total_votes: int
+    you_voted: bool

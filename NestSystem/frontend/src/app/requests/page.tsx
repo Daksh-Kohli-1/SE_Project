@@ -4,389 +4,531 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
+type Tab = "requests" | "visitors" | "leaves" | "amenities";
+
 export default function RequestsPage() {
-  const [requests, setRequests] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>("Maintenance");
-  const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("Medium");
+  const [tab, setTab] = useState<Tab>("requests");
+
+  return (
+    <main className="min-h-screen pb-20 bg-sand">
+      <Navbar active="/requests" />
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <div className="mb-8">
+          <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
+            Requests & Services
+          </h1>
+          <p className="text-slate text-sm sm:text-base">
+            Raise maintenance requests, register visitors, apply for leave, and book amenities.
+          </p>
+        </div>
+
+        <div className="flex gap-2 border-b border-ink/10 mb-8 overflow-x-auto pb-1">
+          {[
+            { id: "requests", label: "Maintenance", icon: "🔧" },
+            { id: "visitors", label: "Visitors", icon: "🧑‍🤝‍🧑" },
+            { id: "leaves", label: "Leave / Day-out", icon: "✈️" },
+            { id: "amenities", label: "Amenities", icon: "📍" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id as Tab)}
+              className={`px-5 py-3 font-bold text-xs rounded-t-xl transition flex items-center gap-2 shrink-0 ${
+                tab === t.id
+                  ? "bg-white text-marine border-t-2 border-x border-marine shadow-xs"
+                  : "text-slate hover:text-ink"
+              }`}
+            >
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {tab === "requests" && <MaintenanceTab />}
+        {tab === "visitors" && <VisitorsTab />}
+        {tab === "leaves" && <LeavesTab />}
+        {tab === "amenities" && <AmenitiesTab />}
+      </div>
+    </main>
+  );
+}
+
+/* ---------------- Maintenance requests ---------------- */
+
+function MaintenanceTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ category: "Maintenance", subject: "", description: "", priority: "Medium" });
   const [submitting, setSubmitting] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [error, setError] = useState("");
 
-  const categories = [
-    { id: "Room cleaning", icon: "🧹", label: "Room Cleaning", desc: "Schedule room / washroom cleaning" },
-    { id: "Maintenance", icon: "🔧", label: "Maintenance", desc: "Plumbing, electrical, furniture repair" },
-    { id: "Leave", icon: "✈️", label: "Out-of-station Leave", desc: "Overnight & home leave pass" },
-    { id: "Late entry", icon: "⏰", label: "Late Entry", desc: "Late permission beyond 10:00 PM" },
-    { id: "Visitor", icon: "👥", label: "Visitor Pass", desc: "Register parent / guest visit" },
-    { id: "Mess complaint", icon: "🍲", label: "Mess Complaint", desc: "Food quality / hygiene feedback" },
-    { id: "Emergency", icon: "🚨", label: "Emergency Alert", desc: "Immediate warden & security dispatch" },
-  ];
-
-  async function fetchRequests() {
-    try {
-      const res = await api.get("/api/services/requests");
-      setRequests(res.data);
-    } catch {
-      // Fallback demo requests
-      setRequests([
-        {
-          id: "REQ-84920",
-          category: "Maintenance",
-          subject: "Washroom Tap Leakage",
-          description: "Minor tap leak in attached washroom C-312.",
-          priority: "Medium",
-          status: "In progress",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: "REQ-71029",
-          category: "Day out",
-          subject: "Sector 17 Shopping Outing",
-          description: "Personal errands in Chandigarh market.",
-          priority: "Low",
-          status: "Approved",
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          updated_at: new Date(Date.now() - 86400000).toISOString(),
-        },
-      ]);
-    }
+  function load() {
+    setLoading(true);
+    api
+      .get("/api/services/requests")
+      .then((r) => setItems(r.data))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    fetchRequests();
+    load();
   }, []);
 
-  function handleOpenCategory(catId: string) {
-    setSelectedCategory(catId);
-    setSubject(`${catId} Request`);
-    setIsModalOpen(true);
-  }
-
-  async function handleCreateRequest(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.subject.trim()) {
+      setError("Please add a subject");
+      return;
+    }
     setSubmitting(true);
+    setError("");
     try {
-      await api.post("/api/services/requests", {
-        category: selectedCategory,
-        subject,
-        description,
-        priority,
-      });
-      await fetchRequests();
-      setIsModalOpen(false);
-      setDescription("");
-      setSubject("");
-    } catch {
-      // fallback add
-      const newReq = {
-        id: `REQ-${Math.floor(10000 + Math.random() * 90000)}`,
-        category: selectedCategory,
-        subject,
-        description,
-        priority,
-        status: "Submitted",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setRequests((prev) => [newReq, ...prev]);
-      setIsModalOpen(false);
-      setDescription("");
-      setSubject("");
+      await api.post("/api/services/requests", form);
+      setForm({ category: "Maintenance", subject: "", description: "", priority: "Medium" });
+      load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Could not submit request");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <main className="min-h-screen pb-20 bg-sand">
-      <Navbar active="/requests" />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
-              Requests & Campus Services
-            </h1>
-            <p className="text-slate text-sm sm:text-base">
-              Raise and track requests for a smooth and hassle-free hostel experience.
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              setSelectedCategory("Maintenance");
-              setSubject("");
-              setIsModalOpen(true);
-            }}
-            className="px-6 py-3 rounded-full bg-coral hover:bg-ink text-white font-bold text-xs shadow-md transition self-start sm:self-auto flex items-center gap-2"
-          >
-            <span>+</span> New Request
-          </button>
-        </div>
-
-        {/* 12 Service Categories Grid */}
-        <div className="mb-10">
-          <h2 className="font-display text-xl font-bold text-ink mb-4">
-            Select a Service Category
-          </h2>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => handleOpenCategory(cat.id)}
-                className="nest-card p-4 text-left hover:border-marine/40 hover:-translate-y-0.5 transition flex flex-col justify-between group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-sand group-hover:bg-marine/10 text-xl flex items-center justify-center mb-3 transition">
-                  {cat.icon}
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-sm text-ink mb-1 group-hover:text-marine transition">
-                    {cat.label}
-                  </h3>
-                  <p className="text-[11px] text-slate line-clamp-2">{cat.desc}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* My Requests Tracker List */}
-        <div className="nest-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="font-display text-xl font-bold text-ink flex items-center gap-2">
-                <span>📋</span> My Active Requests ({requests.length})
-              </h2>
-              <p className="text-xs text-slate">
-                Track status updates and history for all your submitted hostel applications.
-              </p>
+    <div className="grid lg:grid-cols-3 gap-8">
+      <div className="lg:col-span-2 nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Your requests</h3>
+        {loading && <p className="text-xs text-slate">Loading…</p>}
+        <div className="space-y-3">
+          {items.map((r) => (
+            <div key={r.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-ink">{r.subject}</span>
+                <StatusPill status={r.status} />
+              </div>
+              <p className="text-xs text-slate mb-1">{r.description}</p>
+              <div className="flex items-center gap-3 text-[10px] text-slate/80">
+                <span>{r.category}</span>
+                <span>•</span>
+                <span>Priority: {r.priority}</span>
+              </div>
             </div>
-
-            <button
-              onClick={fetchRequests}
-              className="text-xs font-semibold text-marine hover:underline"
-            >
-              🔄 Refresh Status
-            </button>
-          </div>
-
-          {requests.length === 0 ? (
-            <div className="py-12 text-center text-slate">
-              <p className="text-3xl mb-2">📬</p>
-              <p className="font-bold text-ink text-sm">No active requests</p>
-              <p className="text-xs mt-1">Select a category above to submit a new service ticket.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {requests.map((req) => {
-                let statusBadge = "bg-blue-100 text-blue-800";
-                if (req.status === "Approved" || req.status === "Completed") statusBadge = "bg-moss/10 text-moss";
-                if (req.status === "In progress") statusBadge = "bg-amber/10 text-amber";
-                if (req.status === "Emergency" || req.status === "Rejected") statusBadge = "bg-crimson/10 text-crimson";
-
-                return (
-                  <div
-                    key={req.id}
-                    className="p-4 rounded-2xl border border-ink/10 bg-white hover:bg-sand/40 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-marine/10 text-marine font-bold text-xs flex items-center justify-center shrink-0">
-                        {req.category.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-sm text-ink">{req.subject}</span>
-                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sand text-slate">
-                            {req.id}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate mb-1">{req.description}</p>
-                        <span className="text-[10px] text-slate/70">
-                          Category: {req.category} · Submitted {new Date(req.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
-                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${statusBadge}`}>
-                        {req.status}
-                      </span>
-                      <button
-                        onClick={() => setSelectedRequest(req)}
-                        className="px-3.5 py-1.5 rounded-xl border border-ink/10 text-xs font-semibold text-ink hover:bg-sand transition"
-                      >
-                        View Timeline →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          ))}
+          {!loading && items.length === 0 && (
+            <p className="text-xs text-slate text-center py-6">No requests raised yet.</p>
           )}
         </div>
       </div>
 
-      {/* New Request Creation Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-ink/10 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4 border-b border-ink/10 pb-3">
-              <h3 className="font-display text-xl font-bold text-ink">
-                New Service Request
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-sand text-ink font-bold flex items-center justify-center hover:bg-ink/10"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateRequest} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate mb-1">Category</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full border border-ink/15 rounded-xl px-4 py-2.5 text-xs text-ink bg-white font-semibold"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon} {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate mb-1">Subject / Summary</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Washroom cleaning / Water dispenser repair"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full border border-ink/15 rounded-xl px-4 py-2.5 text-xs text-ink font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate mb-1">Priority Level</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="w-full border border-ink/15 rounded-xl px-4 py-2.5 text-xs text-ink bg-white font-semibold"
-                >
-                  <option value="Low">Low Priority</option>
-                  <option value="Medium">Medium Priority (Standard)</option>
-                  <option value="High">High Priority</option>
-                  <option value="Emergency">Emergency</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate mb-1">Detailed Description</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Provide specific details, room location, or expected date & time..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full border border-ink/15 rounded-xl px-4 py-2.5 text-xs text-ink font-medium"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-full border border-ink/20 text-xs font-bold text-slate hover:bg-sand transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 py-2.5 rounded-full bg-coral hover:bg-ink text-white text-xs font-bold shadow-md transition disabled:opacity-50"
-                >
-                  {submitting ? "Submitting..." : "Submit Request"}
-                </button>
-              </div>
-            </form>
+      <div className="nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Raise a request</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <FieldSelect
+            label="Category"
+            value={form.category}
+            onChange={(v) => setForm({ ...form, category: v })}
+            options={["Maintenance", "Electrical", "Plumbing", "Housekeeping", "Other"]}
+          />
+          <FieldInput
+            label="Subject"
+            value={form.subject}
+            onChange={(v) => setForm({ ...form, subject: v })}
+            placeholder="e.g. Fan not working"
+          />
+          <div>
+            <label className="block text-xs font-bold text-slate mb-1">Description</label>
+            <textarea
+              rows={3}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+              placeholder="Add any relevant details"
+            />
           </div>
+          <FieldSelect
+            label="Priority"
+            value={form.priority}
+            onChange={(v) => setForm({ ...form, priority: v })}
+            options={["Low", "Medium", "High"]}
+          />
+          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+          >
+            {submitting ? "Submitting…" : "Submit request"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Visitors ---------------- */
+
+function VisitorsTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    visitor_name: "",
+    phone: "",
+    relationship: "",
+    visit_date: "",
+    expected_arrival: "",
+    expected_departure: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function load() {
+    setLoading(true);
+    api
+      .get("/api/services/visitors")
+      .then((r) => setItems(r.data))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.visitor_name.trim() || !form.visit_date) {
+      setError("Visitor name and visit date are required");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post("/api/services/visitors", form);
+      setForm({ visitor_name: "", phone: "", relationship: "", visit_date: "", expected_arrival: "", expected_departure: "" });
+      load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Could not register visitor");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-8">
+      <div className="lg:col-span-2 nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Registered visitors</h3>
+        {loading && <p className="text-xs text-slate">Loading…</p>}
+        <div className="space-y-3">
+          {items.map((v) => (
+            <div key={v.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-ink">{v.visitor_name}</span>
+                <StatusPill status={v.status} />
+              </div>
+              <p className="text-xs text-slate">
+                {v.relationship} · {v.phone}
+              </p>
+              <p className="text-[10px] text-slate/80 mt-1">
+                {v.visit_date} · {v.expected_arrival} – {v.expected_departure}
+              </p>
+            </div>
+          ))}
+          {!loading && items.length === 0 && (
+            <p className="text-xs text-slate text-center py-6">No visitors registered yet.</p>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Interactive Request Timeline Modal */}
-      {selectedRequest && (
-        <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-ink/10">
-            <div className="flex items-center justify-between mb-4 border-b border-ink/10 pb-3">
-              <div>
-                <span className="text-[10px] font-mono font-bold text-marine px-2 py-0.5 bg-marine/10 rounded">
-                  {selectedRequest.id}
-                </span>
-                <h3 className="font-display text-lg font-bold text-ink mt-1">
-                  {selectedRequest.subject}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedRequest(null)}
-                className="w-8 h-8 rounded-full bg-sand text-ink font-bold flex items-center justify-center hover:bg-ink/10"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Timeline */}
-            <div className="space-y-4 mb-6">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-moss text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  ✓
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-ink">1. Request Submitted</p>
-                  <p className="text-[10px] text-slate">Ticket created by Avleen Kaur</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-marine text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  2
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-ink">2. Assigned to Department</p>
-                  <p className="text-[10px] text-slate">Hostel Maintenance & Housekeeping Staff</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-amber text-white text-xs font-bold flex items-center justify-center shrink-0">
-                  3
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-ink">3. Resolution In Progress</p>
-                  <p className="text-[10px] text-slate">Staff assigned to Visit Room C-312</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-ink/10">
-              <button
-                onClick={() => setSelectedRequest(null)}
-                className="flex-1 py-2 rounded-full bg-sand text-xs font-bold text-ink hover:bg-ink/10"
-              >
-                Close
-              </button>
-            </div>
+      <div className="nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Register a visitor</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <FieldInput label="Visitor name" value={form.visitor_name} onChange={(v) => setForm({ ...form, visitor_name: v })} placeholder="e.g. Gurpreet Singh" />
+          <FieldInput label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="+91 …" />
+          <FieldInput label="Relationship" value={form.relationship} onChange={(v) => setForm({ ...form, relationship: v })} placeholder="e.g. Father" />
+          <FieldInput label="Visit date" type="date" value={form.visit_date} onChange={(v) => setForm({ ...form, visit_date: v })} />
+          <div className="grid grid-cols-2 gap-3">
+            <FieldInput label="Arrival" type="time" value={form.expected_arrival} onChange={(v) => setForm({ ...form, expected_arrival: v })} />
+            <FieldInput label="Departure" type="time" value={form.expected_departure} onChange={(v) => setForm({ ...form, expected_departure: v })} />
           </div>
+          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+          >
+            {submitting ? "Submitting…" : "Register visitor"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Leaves ---------------- */
+
+function LeavesTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    request_type: "Day Out",
+    destination: "",
+    reason: "",
+    start_date: "",
+    end_date: "",
+    expected_return: "",
+    emergency_contact: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function load() {
+    setLoading(true);
+    api
+      .get("/api/services/leaves")
+      .then((r) => setItems(r.data))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.destination.trim() || !form.start_date) {
+      setError("Destination and start date are required");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post("/api/services/leaves", form);
+      setForm({ request_type: "Day Out", destination: "", reason: "", start_date: "", end_date: "", expected_return: "", emergency_contact: "" });
+      load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Could not submit leave request");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-8">
+      <div className="lg:col-span-2 nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Leave history</h3>
+        {loading && <p className="text-xs text-slate">Loading…</p>}
+        <div className="space-y-3">
+          {items.map((l) => (
+            <div key={l.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-ink">{l.request_type} — {l.destination}</span>
+                <StatusPill status={l.status} />
+              </div>
+              <p className="text-xs text-slate">{l.reason}</p>
+              <p className="text-[10px] text-slate/80 mt-1">
+                {l.start_date} → {l.end_date} · Return by {l.expected_return}
+              </p>
+            </div>
+          ))}
+          {!loading && items.length === 0 && (
+            <p className="text-xs text-slate text-center py-6">No leave requests yet.</p>
+          )}
         </div>
-      )}
-    </main>
+      </div>
+
+      <div className="nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Apply for leave</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <FieldSelect
+            label="Type"
+            value={form.request_type}
+            onChange={(v) => setForm({ ...form, request_type: v })}
+            options={["Day Out", "Overnight", "Home Visit", "Other"]}
+          />
+          <FieldInput label="Destination" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} placeholder="e.g. Sector 17, Chandigarh" />
+          <div>
+            <label className="block text-xs font-bold text-slate mb-1">Reason</label>
+            <textarea
+              rows={2}
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FieldInput label="Start date" type="date" value={form.start_date} onChange={(v) => setForm({ ...form, start_date: v })} />
+            <FieldInput label="End date" type="date" value={form.end_date} onChange={(v) => setForm({ ...form, end_date: v })} />
+          </div>
+          <FieldInput label="Expected return" type="time" value={form.expected_return} onChange={(v) => setForm({ ...form, expected_return: v })} />
+          <FieldInput label="Emergency contact" value={form.emergency_contact} onChange={(v) => setForm({ ...form, emergency_contact: v })} placeholder="+91 …" />
+          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+          >
+            {submitting ? "Submitting…" : "Submit leave request"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Amenities ---------------- */
+
+function AmenitiesTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ amenity_name: "Study Room 3B", booking_date: "", time_slot: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function load() {
+    setLoading(true);
+    api
+      .get("/api/services/amenities")
+      .then((r) => setItems(r.data))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.booking_date || !form.time_slot.trim()) {
+      setError("Pick a date and time slot");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post("/api/services/amenities", form);
+      setForm({ amenity_name: "Study Room 3B", booking_date: "", time_slot: "" });
+      load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Could not book amenity");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-8">
+      <div className="lg:col-span-2 nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Your amenity bookings</h3>
+        {loading && <p className="text-xs text-slate">Loading…</p>}
+        <div className="space-y-3">
+          {items.map((a) => (
+            <div key={a.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-ink">{a.amenity_name}</p>
+                <p className="text-[11px] text-slate">{a.booking_date} · {a.time_slot}</p>
+              </div>
+              <StatusPill status={a.status} />
+            </div>
+          ))}
+          {!loading && items.length === 0 && (
+            <p className="text-xs text-slate text-center py-6">No amenity bookings yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="nest-card p-6">
+        <h3 className="font-display text-lg font-bold text-ink mb-4">Book an amenity</h3>
+        <form onSubmit={submit} className="space-y-4">
+          <FieldSelect
+            label="Amenity"
+            value={form.amenity_name}
+            onChange={(v) => setForm({ ...form, amenity_name: v })}
+            options={["Study Room 3B", "Common Room TV", "Gym Slot", "Laundry Machine"]}
+          />
+          <FieldInput label="Date" type="date" value={form.booking_date} onChange={(v) => setForm({ ...form, booking_date: v })} />
+          <FieldInput label="Time slot" value={form.time_slot} onChange={(v) => setForm({ ...form, time_slot: v })} placeholder="e.g. 06:00 PM - 08:00 PM" />
+          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+          >
+            {submitting ? "Booking…" : "Book amenity"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Shared bits ---------------- */
+
+function StatusPill({ status }: { status: string }) {
+  const s = (status || "").toLowerCase();
+  const color =
+    s.includes("approve") || s.includes("confirm") || s.includes("resolve")
+      ? "bg-moss/10 text-moss"
+      : s.includes("reject") || s.includes("cancel")
+      ? "bg-coral/10 text-coral"
+      : "bg-amber/10 text-amber";
+  return <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${color}`}>{status}</span>;
+}
+
+function FieldInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-slate mb-1">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+      />
+    </div>
+  );
+}
+
+function FieldSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-slate mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink bg-white focus:ring-2 focus:ring-marine"
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

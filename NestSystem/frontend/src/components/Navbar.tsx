@@ -40,6 +40,7 @@ export default function Navbar({ active }: { active?: string }) {
     { href: "/mess", label: "Mess & Community" },
     { href: "/payment", label: "Payments" },
     { href: "/profile", label: "Profile" },
+    { href: "/mess/live", label: "Live Mess Vote" },
   ];
 
   const displayName = user?.name || "Avleen Kaur";

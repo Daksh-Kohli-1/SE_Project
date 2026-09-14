@@ -181,3 +181,76 @@ async def system_overview(_=Depends(get_current_admin), db: AsyncSession = Depen
         "total_groups": len(groups),
         "confirmed_groups": confirmed_groups,
     }
+
+# Replace the mess-related section you added previously at the bottom of
+# app/api/routes/admin.py with this. The menu GET/PUT endpoints are
+# unchanged; only the live-poll endpoint now includes window/open info.
+
+from datetime import date as date_cls
+from app.models.models import MessMenu
+from app.schemas.schemas import MessMenuUpdateRequest, DayMenuOut
+from app.services import mess_poll_service
+
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@router.get("/mess/menu", response_model=list[DayMenuOut])
+async def admin_get_week_menu(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MessMenu))
+    week = {i: {"breakfast": [], "lunch": [], "dinner": []} for i in range(7)}
+    for r in result.scalars().all():
+        week[r.day_of_week][r.meal_type.value] = r.items.split(",") if r.items else []
+    return [DayMenuOut(day_of_week=i, day_name=DAY_NAMES[i], **week[i]) for i in range(7)]
+
+
+@router.put("/mess/menu/{day_of_week}/{meal_type}")
+async def admin_update_menu_slot(
+    day_of_week: int,
+    meal_type: str,
+    payload: MessMenuUpdateRequest,
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if not (0 <= day_of_week <= 6):
+        raise HTTPException(status_code=400, detail="day_of_week must be 0-6 (Monday=0)")
+    if meal_type not in ("breakfast", "lunch", "dinner"):
+        raise HTTPException(status_code=400, detail="Invalid meal_type")
+
+    result = await db.execute(
+        select(MessMenu).where(MessMenu.day_of_week == day_of_week, MessMenu.meal_type == meal_type)
+    )
+    row = result.scalar_one_or_none()
+    items_csv = ",".join(i.strip() for i in payload.items if i.strip())
+
+    if row:
+        row.items = items_csv
+    else:
+        row = MessMenu(day_of_week=day_of_week, meal_type=meal_type, items=items_csv)
+        db.add(row)
+    await db.commit()
+
+    return {
+        "message": "Menu updated",
+        "day_of_week": day_of_week,
+        "meal_type": meal_type,
+        "items": items_csv.split(",") if items_csv else [],
+    }
+
+
+@router.get("/mess/live-poll/today")
+async def admin_live_poll_today(_=Depends(get_current_admin)):
+    """Live tallies + open/closed status for all three meals today."""
+    today = date_cls.today().isoformat()
+    out = {}
+    for meal in ("breakfast", "lunch", "dinner"):
+        tally = await mess_poll_service.get_tally(meal, today)
+        start, end = mess_poll_service.get_poll_window(meal)
+        out[meal] = {
+            "options": mess_poll_service.LIVE_POLL_OPTIONS,
+            "tally": tally,
+            "total_votes": sum(tally.values()),
+            "is_open": mess_poll_service.is_poll_open(meal),
+            "window_start": start.strftime("%H:%M"),
+            "window_end": end.strftime("%H:%M"),
+        }
+    return {"date": today, **out}

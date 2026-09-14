@@ -9,10 +9,10 @@ export default function GroupPage() {
   const [user, setUser] = useState<any>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [roomPref, setRoomPref] = useState("2-seater");
-  const [specialReq, setSpecialReq] = useState("Near academic block");
+  const [specialReq, setSpecialReq] = useState("");
   const [prefSaved, setPrefSaved] = useState(false);
 
   async function refresh() {
@@ -20,30 +20,21 @@ export default function GroupPage() {
       const uRes = await api.get("/api/auth/me");
       setUser(uRes.data);
     } catch {
-      setUser({ id: "u-avleen", name: "Avleen Kaur" });
+      setUser(null);
     }
 
     try {
       const gRes = await api.get("/api/groups/me");
       setGroup(gRes.data);
     } catch {
-      // Fallback demo group if none
-      setGroup({
-        id: "g1",
-        code: "N7K4P2",
-        leader_id: "u-avleen",
-        status: "forming",
-        members: [
-          { id: "u-avleen", name: "Avleen Kaur", roll_no: "102303011", payment_status: "pending" },
-          { id: "u-ananya", name: "Ananya Singh", roll_no: "102303009", payment_status: "paid" },
-          { id: "u-priya", name: "Priya Reddy", roll_no: "102303010", payment_status: "pending" },
-        ],
-      });
+      // No group yet (404) — this is the normal, expected state for a new user.
+      setGroup(null);
     }
   }
 
   useEffect(() => {
-    refresh();
+    setLoading(true);
+    refresh().finally(() => setLoading(false));
   }, []);
 
   function copyGroupCode() {
@@ -94,6 +85,11 @@ export default function GroupPage() {
   }
 
   function saveGroupPreferences() {
+    // NOTE: there is currently no backend field/endpoint for room-type
+    // preference or special location requests — this only affects what's
+    // shown in this browser tab right now and is not sent anywhere or
+    // used by the allocation algorithm. Wire up a real endpoint before
+    // relying on this for anything.
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 3000);
   }
@@ -113,8 +109,10 @@ export default function GroupPage() {
           </p>
         </div>
 
+        {loading && <p className="text-xs text-slate mb-4">Loading…</p>}
+
         {/* If no group exists */}
-        {!group && (
+        {!loading && !group && (
           <div className="grid md:grid-cols-2 gap-6">
             <div className="nest-card p-6">
               <div className="w-10 h-10 rounded-xl bg-marine/10 text-marine font-bold text-xl flex items-center justify-center mb-3">
@@ -160,7 +158,7 @@ export default function GroupPage() {
         )}
 
         {/* If group exists */}
-        {group && (
+        {!loading && group && (
           <div className="space-y-6">
             {/* Group Code Card */}
             <div className="nest-card p-6 bg-gradient-to-r from-marine/5 via-white to-sand border border-marine/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -168,7 +166,7 @@ export default function GroupPage() {
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate">Group Invite Code</span>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="font-display text-3xl font-bold text-marine tracking-wider">
-                    {group.code || "N7K4P2"}
+                    {group.code}
                   </span>
                   <span className="px-3 py-1 rounded-full bg-sand border border-ink/10 text-xs font-semibold text-ink capitalize">
                     {group.status ? group.status.replace("_", " ") : "Forming"}
@@ -197,7 +195,7 @@ export default function GroupPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="font-display text-xl font-bold text-ink flex items-center gap-2">
-                    <span>👥</span> Members ({group.members?.length || 3}/4)
+                    <span>👥</span> Members ({group.members?.length || 0}/4)
                   </h3>
                   <p className="text-xs text-slate">
                     Groups can have up to 4 members. Every member pays their fee independently to confirm their seat.
@@ -214,8 +212,8 @@ export default function GroupPage() {
               {/* Members List */}
               <div className="divide-y divide-ink/5">
                 {group.members?.map((m: any) => {
-                  const isUserSelf = m.name?.includes("Avleen") || m.id === user?.id;
-                  const isLeader = m.id === group.leader_id || m.name?.includes("Avleen");
+                  const isUserSelf = m.id === user?.id;
+                  const isLeader = m.id === group.leader_id;
 
                   return (
                     <div key={m.id} className="py-3.5 flex items-center justify-between gap-4">
@@ -237,9 +235,7 @@ export default function GroupPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate">
-                            Roll No: {m.roll_no} · Computer Engineering
-                          </p>
+                          <p className="text-xs text-slate">Roll No: {m.roll_no}</p>
                         </div>
                       </div>
 
@@ -275,9 +271,13 @@ export default function GroupPage() {
 
             {/* Group Preferences Card */}
             <div className="nest-card p-6 bg-gradient-to-br from-sand to-white">
-              <h3 className="font-display text-lg font-bold text-ink mb-4 flex items-center gap-2">
+              <h3 className="font-display text-lg font-bold text-ink mb-1 flex items-center gap-2">
                 ⚙️ Group Preferences & Special Requests
               </h3>
+              <p className="text-[10px] text-amber font-semibold mb-4">
+                Not yet connected to the backend — cluster rankings on the Clusters page are what actually drive
+                room allotment. This section is a placeholder until a real endpoint exists for it.
+              </p>
 
               <div className="grid sm:grid-cols-2 gap-4 mb-4">
                 <div>
@@ -307,19 +307,19 @@ export default function GroupPage() {
 
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate">
-                  Preferences will be used by the allocation algorithm when matching clusters.
+                  Use the Clusters page to actually rank preferences for allocation.
                 </span>
                 <button
                   onClick={saveGroupPreferences}
                   className="px-5 py-2.5 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-xs transition"
                 >
-                  Save Group Preferences
+                  Save Locally
                 </button>
               </div>
 
               {prefSaved && (
                 <p className="text-xs font-bold text-moss mt-2 animate-fadeIn">
-                  ✓ Group preferences saved successfully.
+                  ✓ Saved in this browser tab only (not sent to the server).
                 </p>
               )}
             </div>

@@ -57,7 +57,7 @@ export default function LoginPage() {
   function selectFromRoster(selectedEmail: string) {
     setIdentifier(selectedEmail);
     const isAdm = selectedEmail === "admin@thapar.edu";
-    const pass = isAdm ? "Admin@123" : "Next@123";
+    const pass = isAdm ? "Admin@123" : "Pass@123";
     setPassword(pass);
   }
 

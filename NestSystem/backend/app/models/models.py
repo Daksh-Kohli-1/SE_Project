@@ -323,3 +323,26 @@ class Notification(Base):
     category: Mapped[str] = mapped_column(String(30), default="General")  # Payment, Notice, Maintenance, Leave, System
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class MealType(str, enum.Enum):
+    breakfast = "breakfast"
+    lunch = "lunch"
+    dinner = "dinner"
+
+
+class MessMenu(Base):
+    """Static weekly mess menu (not tied to calendar dates). Admin can edit
+    any day/meal at any time; students always see the latest version.
+    day_of_week: 0=Monday ... 6=Sunday (matches datetime.weekday())."""
+
+    __tablename__ = "mess_menu"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    day_of_week: Mapped[int] = mapped_column(Integer)
+    meal_type: Mapped[MealType] = mapped_column(Enum(MealType))
+    items: Mapped[str] = mapped_column(String(1000), default="")  # comma-separated dish names
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("day_of_week", "meal_type", name="uq_day_meal"),)

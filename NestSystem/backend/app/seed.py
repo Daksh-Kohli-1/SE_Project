@@ -317,3 +317,58 @@ async def seed_initial_data():
         ))
 
         await db.commit()
+
+async def seed_mess_menu(db):
+    from app.models.models import MessMenu
+
+    existing = await db.execute(select(MessMenu.id).limit(1))
+    if existing.scalar_one_or_none():
+        return  # already seeded
+
+    # Dates from the photo are ignored — this is a static weekly cycle, Mon-Sun.
+    WEEK = [
+        # (breakfast, lunch, dinner)
+        (
+            "Poha,Mix Veg Paratha,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Atta Bread,Mix Fruit Jam,Pickle,Butter,Plain Curd,Boiled Egg,Omelette/Bhurji,Cut Fruit",
+            "Khatta Meetha Petha,Rajma Rasaila,Steamed Rice,Chapati,Green Salad,Jeera Raita",
+            "Kadhai Paneer,Egg Curry/Papdi Chat (once in 15 days),Yellow Moong Dal,Steamed Rice,Chapati,Sirka Onion,Ice Cream",
+        ),
+        (
+            "Cornflakes,Masala Poori,Aloo Bhaji,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Atta Bread,Mix Fruit Jam,Boiled Egg,Bhurji,Whole Banana",
+            "Kadhai Soya/Soya Keema,Black Chana,Tadka Raita,Macaroni Salad,Chapati,Steamed Rice,Lemon Water",
+            "Veg Manchurian/Veg Noodles,Dal Bukhara,Veg Fried Rice,Chapati,Green Salad,Jalebi",
+        ),
+        (
+            "Macaroni,Aloo Paratha,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Bread,Plain Curd,Boiled Egg,Bhurji,Cut Fruit",
+            "Matar Paneer,Moong Masoor Dal,Steamed Rice,Chapati,Mix Raita,Roohafza",
+            "Bhindi Do Pyaza,Arbi Masala,Chana Dal,Mix Veg Pulao,Chapati,Tossed Salad,Steamed Rice,Besan Barfi",
+        ),
+        (
+            "Sambhar,Uttapam,Sweet Veg Upma,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Bread,Butter/Jam,Boiled Egg,Coconut Chutney,Bhurji/Omelette,Banana",
+            "Aloo Capsicum,Kadhi Pakoda,Jeera Rice,Chapati,Fryums,Orange Tang",
+            "Mix Sauce Pasta,Dal Dhaba,Coran Salad,Plain Rice,Chapati,Boondi Ladoo",
+        ),
+        (
+            "Cornflakes,Paneer Green Chutney,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Bread,Pickle,Butter,Boiled Egg,Omelette/Bhurji,Cut Fruit",
+            "Kulcha/Pav,Chole/Bhaji,Plain Rice/Veg Biryani,Green Salad,Green Chutney,Iced Tea",
+            "Kadhai Soya,Moong Masoor Dal,Veg Pulao,Chapati,Three Bean Salad,Gulab Jamun",
+        ),
+        (
+            "Veg Poha,Cornflakes,Mix Veg Paratha,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Bread,Mix Fruit Jam,Pickle,Butter,Boiled Egg,Bhurji",
+            "Aloo Gobi Matar,Arhar Dal Tadka,Green Salad,Jeera Rice,Chapati,Boondi Raita,Mango Tang",
+            "Tawa Veg/Veg Kofta Curry,Dal Panchratan,Steamed Rice,Green Salad,Fruit Custard",
+        ),
+        (
+            "Veg Coleslaw Sandwich/Mix Paratha,Tea,Coffee,Bournvita,Hot Milk,Cold Milk,Bread,Pickle,Curd,Butter,Boiled Egg,Omelette/Bhurji",
+            "Aloo Bhaji/Chole,Steamed Rice,Poori/Bhature,Laccha Onion,Green Chutney,Lassi",
+            "Cabbage Matar,Dal Tadka,Jeera Rice,Chapati,Green Salad,Fruit Cake/Brownie",
+        ),
+    ]
+
+    for day_idx, (bf, lu, di) in enumerate(WEEK):
+        db.add(MessMenu(day_of_week=day_idx, meal_type="breakfast", items=bf))
+        db.add(MessMenu(day_of_week=day_idx, meal_type="lunch", items=lu))
+        db.add(MessMenu(day_of_week=day_idx, meal_type="dinner", items=di))
+    await seed_mess_menu(db)
+
+    await db.commit()
