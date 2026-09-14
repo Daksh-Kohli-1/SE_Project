@@ -5,13 +5,13 @@
 @tailwind utilities;
 
 :root {
-  --bg-sand: #F8F6F0;
-  --text-ink: #0B1F33;
+  --bg-charcoal: #0B0B0C;
+  --text-primary: #FFFFFF;
 }
 
 body {
-  background-color: var(--bg-sand);
-  color: var(--text-ink);
+  background-color: var(--bg-charcoal);
+  color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -40,15 +40,16 @@ body {
 
 /* Card utilities */
 .nest-card {
-  background-color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.03);
   border-radius: 1.25rem;
-  border: 1px solid rgba(11, 31, 51, 0.08);
-  box-shadow: 0 2px 12px -1px rgba(11, 31, 51, 0.04), 0 1px 3px rgba(11, 31, 51, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 12px -1px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
   transition: all 0.2s ease-in-out;
 }
 
 .nest-card:hover {
-  box-shadow: 0 8px 24px -4px rgba(11, 31, 51, 0.08);
+  box-shadow: 0 8px 24px -4px rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 /* Scrollbar styling */
@@ -57,14 +58,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(11, 31, 51, 0.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(15, 76, 129, 0.3);
+  background: rgba(59, 130, 246, 0.4);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(15, 76, 129, 0.6);
+  background: rgba(59, 130, 246, 0.7);
 }
 
 /* Pulse animation for SOS */
