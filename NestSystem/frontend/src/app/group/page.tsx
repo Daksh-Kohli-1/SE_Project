@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -94,49 +95,72 @@ export default function GroupPage() {
     setTimeout(() => setPrefSaved(false), 3000);
   }
 
+  const fadeUp = {
+    hidden: { opacity: 0, y: 16 },
+    show: (i: number = 0) => ({
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.4, delay: i * 0.08, ease: "easeOut" as const },
+    }),
+  };
+
   return (
-    <main className="min-h-screen pb-16 bg-sand">
+    <main className="min-h-screen pb-16 bg-[#0B0B0C]">
       <Navbar active="/group" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
+        <motion.div initial="hidden" animate="show" custom={0} variants={fadeUp} className="mb-8">
+          <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1">
             Your group
           </h1>
-          <p className="text-slate text-sm sm:text-base">
+          <p className="text-white/60 text-sm sm:text-base">
             Team up with friends (1–4 members) or go solo. Group leaders rank preferred clusters on behalf of the team.
           </p>
-        </div>
+        </motion.div>
 
-        {loading && <p className="text-xs text-slate mb-4">Loading…</p>}
+        {loading && <p className="text-xs text-white/50 mb-4">Loading…</p>}
 
         {/* If no group exists */}
         {!loading && !group && (
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="nest-card p-6">
-              <div className="w-10 h-10 rounded-xl bg-marine/10 text-marine font-bold text-xl flex items-center justify-center mb-3">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={1}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-300 font-bold text-xl flex items-center justify-center mb-3">
                 ➕
               </div>
-              <h3 className="font-display text-xl font-bold text-ink mb-2">Create a Group</h3>
-              <p className="text-xs text-slate mb-4 leading-relaxed">
+              <h3 className="text-xl font-semibold text-white mb-2">Create a Group</h3>
+              <p className="text-xs text-white/60 mb-4 leading-relaxed">
                 Become the group leader and receive a shareable 6-character group code for your friends. Going solo? A 1-person group works automatically!
               </p>
-              <button
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={createGroup}
                 disabled={loading}
-                className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
               >
                 {loading ? "Creating..." : "Create Group"}
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
 
-            <div className="nest-card p-6">
-              <div className="w-10 h-10 rounded-xl bg-coral/10 text-coral font-bold text-xl flex items-center justify-center mb-3">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={2}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-400 font-bold text-xl flex items-center justify-center mb-3">
                 🔑
               </div>
-              <h3 className="font-display text-xl font-bold text-ink mb-2">Join a Group</h3>
-              <p className="text-xs text-slate mb-4 leading-relaxed">
+              <h3 className="text-xl font-semibold text-white mb-2">Join a Group</h3>
+              <p className="text-xs text-white/60 mb-4 leading-relaxed">
                 Have a group code from a friend? Enter it below to join their hostel allocation team.
               </p>
               <form onSubmit={joinGroup} className="flex gap-2">
@@ -144,16 +168,18 @@ export default function GroupPage() {
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
                   placeholder="e.g. N7K4P2"
-                  className="flex-1 border border-ink/15 rounded-xl px-4 py-2.5 text-sm font-mono tracking-wider text-ink focus:outline-none focus:ring-2 focus:ring-marine"
+                  className="flex-1 border border-white/15 bg-white/[0.03] rounded-xl px-4 py-2.5 text-sm font-mono tracking-wider text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   disabled={loading || !code}
-                  className="py-2.5 px-6 bg-coral hover:bg-ink text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50"
+                  className="py-2.5 px-6 bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs rounded-xl shadow-sm transition-colors disabled:opacity-50"
                 >
                   Join
-                </button>
+                </motion.button>
               </form>
-            </div>
+            </motion.div>
           </div>
         )}
 
@@ -161,14 +187,20 @@ export default function GroupPage() {
         {!loading && group && (
           <div className="space-y-6">
             {/* Group Code Card */}
-            <div className="nest-card p-6 bg-gradient-to-r from-marine/5 via-white to-sand border border-marine/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={1}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-blue-500/20 rounded-2xl shadow-sm p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            >
               <div>
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate">Group Invite Code</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-white/50">Group Invite Code</span>
                 <div className="flex items-center gap-3 mt-1">
-                  <span className="font-display text-3xl font-bold text-marine tracking-wider">
+                  <span className="text-3xl font-semibold text-blue-300 tracking-wider">
                     {group.code}
                   </span>
-                  <span className="px-3 py-1 rounded-full bg-sand border border-ink/10 text-xs font-semibold text-ink capitalize">
+                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-white capitalize">
                     {group.status ? group.status.replace("_", " ") : "Forming"}
                   </span>
                 </div>
@@ -177,65 +209,77 @@ export default function GroupPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyGroupCode}
-                  className="px-4 py-2 bg-white hover:bg-sand border border-ink/10 rounded-xl text-xs font-bold text-ink flex items-center gap-1.5 shadow-xs transition"
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   📋 {copied ? "Code Copied!" : "Copy Code"}
                 </button>
                 <button
                   onClick={copyGroupCode}
-                  className="px-4 py-2 bg-marine hover:bg-ink text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   🔗 Share Invite
                 </button>
               </div>
-            </div>
+            </motion.div>
 
             {/* Members Section */}
-            <div className="nest-card p-6">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={2}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="font-display text-xl font-bold text-ink flex items-center gap-2">
+                  <h3 className="text-xl font-semibold text-white flex items-center gap-2">
                     <span>👥</span> Members ({group.members?.length || 0}/4)
                   </h3>
-                  <p className="text-xs text-slate">
+                  <p className="text-xs text-white/50">
                     Groups can have up to 4 members. Every member pays their fee independently to confirm their seat.
                   </p>
                 </div>
                 <button
                   onClick={copyGroupCode}
-                  className="px-3 py-1.5 bg-coral/10 text-coral hover:bg-coral hover:text-white rounded-xl text-xs font-bold transition"
+                  className="px-3 py-1.5 bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white rounded-xl text-xs font-bold transition-colors"
                 >
                   + Invite Member
                 </button>
               </div>
 
               {/* Members List */}
-              <div className="divide-y divide-ink/5">
-                {group.members?.map((m: any) => {
+              <div className="divide-y divide-white/10">
+                {group.members?.map((m: any, i: number) => {
                   const isUserSelf = m.id === user?.id;
                   const isLeader = m.id === group.leader_id;
 
                   return (
-                    <div key={m.id} className="py-3.5 flex items-center justify-between gap-4">
+                    <motion.div
+                      key={m.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: i * 0.06 }}
+                      className="py-3.5 flex items-center justify-between gap-4"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-marine/10 text-marine font-bold text-sm flex items-center justify-center border border-marine/20">
+                        <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-300 font-bold text-sm flex items-center justify-center border border-blue-500/20">
                           {m.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-ink">{m.name}</span>
+                            <span className="font-bold text-sm text-white">{m.name}</span>
                             {isUserSelf && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-marine text-white">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
                                 You
                               </span>
                             )}
                             {isLeader && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber/10 text-amber">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
                                 Group Leader
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate">Roll No: {m.roll_no}</p>
+                          <p className="text-xs text-white/50">Roll No: {m.roll_no}</p>
                         </div>
                       </div>
 
@@ -243,49 +287,55 @@ export default function GroupPage() {
                         <span
                           className={`text-xs font-semibold px-3 py-1 rounded-full ${
                             m.payment_status === "paid"
-                              ? "bg-moss/10 text-moss"
-                              : "bg-amber/10 text-amber"
+                              ? "bg-green-500/10 text-green-400"
+                              : "bg-orange-500/10 text-orange-400"
                           }`}
                         >
                           {m.payment_status === "paid" ? "Fee Paid ✓" : "Payment Pending"}
                         </span>
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
 
               {group.status === "forming" && (
-                <div className="mt-6 pt-4 border-t border-ink/10 flex items-center justify-between">
-                  <span className="text-xs text-slate">Want to leave or switch groups?</span>
+                <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
+                  <span className="text-xs text-white/50">Want to leave or switch groups?</span>
                   <button
                     onClick={leaveGroup}
                     disabled={loading}
-                    className="text-xs font-bold text-coral hover:underline"
+                    className="text-xs font-bold text-orange-400 hover:text-orange-300 transition-colors"
                   >
                     Leave Group
                   </button>
                 </div>
               )}
-            </div>
+            </motion.div>
 
             {/* Group Preferences Card */}
-            <div className="nest-card p-6 bg-gradient-to-br from-sand to-white">
-              <h3 className="font-display text-lg font-bold text-ink mb-1 flex items-center gap-2">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={3}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
+              <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
                 ⚙️ Group Preferences & Special Requests
               </h3>
-              <p className="text-[10px] text-amber font-semibold mb-4">
+              <p className="text-[10px] text-orange-400 font-semibold mb-4">
                 Not yet connected to the backend — cluster rankings on the Clusters page are what actually drive
                 room allotment. This section is a placeholder until a real endpoint exists for it.
               </p>
 
               <div className="grid sm:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate mb-1">Room Type Preference</label>
+                  <label className="block text-xs font-bold text-white/60 mb-1">Room Type Preference</label>
                   <select
                     value={roomPref}
                     onChange={(e) => setRoomPref(e.target.value)}
-                    className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink bg-white focus:ring-2 focus:ring-marine"
+                    className="w-full border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white bg-[#151517] focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   >
                     <option value="2-seater">2-Seater Connected Room (Standard Cluster)</option>
                     <option value="1-seater">Single Seater Occupancy</option>
@@ -294,39 +344,48 @@ export default function GroupPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate mb-1">Special Location Request</label>
+                  <label className="block text-xs font-bold text-white/60 mb-1">Special Location Request</label>
                   <input
                     type="text"
                     value={specialReq}
                     onChange={(e) => setSpecialReq(e.target.value)}
                     placeholder="e.g. Near academic block, ground floor"
-                    className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink bg-white focus:ring-2 focus:ring-marine"
+                    className="w-full border border-white/15 bg-white/[0.03] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate">
+                <span className="text-xs text-white/50">
                   Use the Clusters page to actually rank preferences for allocation.
                 </span>
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={saveGroupPreferences}
-                  className="px-5 py-2.5 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-xs transition"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors"
                 >
                   Save Locally
-                </button>
+                </motion.button>
               </div>
 
-              {prefSaved && (
-                <p className="text-xs font-bold text-moss mt-2 animate-fadeIn">
-                  ✓ Saved in this browser tab only (not sent to the server).
-                </p>
-              )}
-            </div>
+              <AnimatePresence>
+                {prefSaved && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-xs font-bold text-green-400 mt-2"
+                  >
+                    ✓ Saved in this browser tab only (not sent to the server).
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
           </div>
         )}
 
-        {error && <p className="text-xs text-coral font-bold mt-4">{error}</p>}
+        {error && <p className="text-xs text-orange-400 font-bold mt-4">{error}</p>}
       </div>
     </main>
   );

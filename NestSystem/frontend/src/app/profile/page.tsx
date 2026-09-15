@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -54,30 +55,40 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen pb-20 bg-sand">
+    <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/profile" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="mb-8"
+        >
+          <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1">
             My profile
           </h1>
-          <p className="text-slate text-sm sm:text-base">
+          <p className="text-white/60 text-sm sm:text-base">
             Keep your personal and emergency details up to date.
           </p>
-        </div>
+        </motion.div>
 
-        {loading && <p className="text-xs text-slate">Loading…</p>}
+        {loading && <p className="text-xs text-white/50">Loading…</p>}
 
         {user && (
           <div className="grid lg:grid-cols-3 gap-8">
             {/* Read-only identity card */}
-            <div className="nest-card p-6">
-              <div className="w-16 h-16 rounded-full bg-marine/10 text-marine font-bold text-xl flex items-center justify-center border border-marine/20 mb-4">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.05, ease: "easeOut" }}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
+              <div className="w-16 h-16 rounded-full bg-blue-500/10 text-blue-300 font-bold text-xl flex items-center justify-center border border-blue-500/20 mb-4">
                 {user.name?.substring(0, 2).toUpperCase()}
               </div>
-              <h3 className="font-display text-lg font-bold text-ink mb-1">{user.name}</h3>
-              <p className="text-xs text-slate mb-4">{user.roll_no}</p>
+              <h3 className="text-lg font-semibold text-white mb-1">{user.name}</h3>
+              <p className="text-xs text-white/50 mb-4">{user.roll_no}</p>
 
               <dl className="space-y-2 text-xs">
                 <ReadRow label="Email" value={user.email} />
@@ -89,41 +100,59 @@ export default function ProfilePage() {
                 <ReadRow label="Hostel" value={user.hostel_name} />
                 <ReadRow label="Room" value={user.room_no} />
               </dl>
-              <p className="text-[10px] text-slate/70 mt-4">
+              <p className="text-[10px] text-white/40 mt-4">
                 Academic details are managed by administration and can't be edited here.
               </p>
-            </div>
+            </motion.div>
 
             {/* Editable form */}
-            <div className="lg:col-span-2 nest-card p-6">
-              <h3 className="font-display text-lg font-bold text-ink mb-4">Editable details</h3>
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+              className="lg:col-span-2 bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
+              <h3 className="text-lg font-semibold text-white mb-4">Editable details</h3>
               <form onSubmit={save} className="grid sm:grid-cols-2 gap-4">
                 {EDITABLE_FIELDS.map((f) => (
                   <div key={f.key}>
-                    <label className="block text-xs font-bold text-slate mb-1">{f.label}</label>
+                    <label className="block text-xs font-bold text-white/60 mb-1">{f.label}</label>
                     <input
                       value={form[f.key] || ""}
                       onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                      className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+                      className="w-full border border-white/15 bg-white/[0.03] text-white rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
                 ))}
 
                 <div className="sm:col-span-2 flex items-center justify-between mt-2">
                   <div>
-                    {error && <p className="text-xs text-coral font-semibold">{error}</p>}
-                    {saved && <p className="text-xs text-moss font-semibold">✓ Profile updated</p>}
+                    {error && <p className="text-xs text-orange-400 font-semibold">{error}</p>}
+                    <AnimatePresence>
+                      {saved && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="text-xs text-green-400 font-semibold"
+                        >
+                          ✓ Profile updated
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     type="submit"
                     disabled={saving}
-                    className="px-6 py-2.5 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
                   >
                     {saving ? "Saving…" : "Save changes"}
-                  </button>
+                  </motion.button>
                 </div>
               </form>
-            </div>
+            </motion.div>
           </div>
         )}
       </div>
@@ -133,9 +162,9 @@ export default function ProfilePage() {
 
 function ReadRow({ label, value }: { label: string; value: any }) {
   return (
-    <div className="flex items-center justify-between border-b border-ink/5 pb-2">
-      <dt className="text-slate">{label}</dt>
-      <dd className="font-semibold text-ink">{value ?? "—"}</dd>
+    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+      <dt className="text-white/50">{label}</dt>
+      <dd className="font-semibold text-white">{value ?? "—"}</dd>
     </div>
   );
 }

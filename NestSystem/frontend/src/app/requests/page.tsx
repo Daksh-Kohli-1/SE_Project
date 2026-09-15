@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -10,20 +11,25 @@ export default function RequestsPage() {
   const [tab, setTab] = useState<Tab>("requests");
 
   return (
-    <main className="min-h-screen pb-20 bg-sand">
+    <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/requests" />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <div className="mb-8">
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="mb-8"
+        >
+          <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1">
             Requests & Services
           </h1>
-          <p className="text-slate text-sm sm:text-base">
+          <p className="text-white/60 text-sm sm:text-base">
             Raise maintenance requests, register visitors, apply for leave, and book amenities.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="flex gap-2 border-b border-ink/10 mb-8 overflow-x-auto pb-1">
+        <div className="flex gap-2 border-b border-white/10 mb-8 overflow-x-auto pb-1">
           {[
             { id: "requests", label: "Maintenance", icon: "🔧" },
             { id: "visitors", label: "Visitors", icon: "🧑‍🤝‍🧑" },
@@ -33,10 +39,10 @@ export default function RequestsPage() {
             <button
               key={t.id}
               onClick={() => setTab(t.id as Tab)}
-              className={`px-5 py-3 font-bold text-xs rounded-t-xl transition flex items-center gap-2 shrink-0 ${
+              className={`relative px-5 py-3 font-bold text-xs rounded-t-xl transition-colors flex items-center gap-2 shrink-0 ${
                 tab === t.id
-                  ? "bg-white text-marine border-t-2 border-x border-marine shadow-xs"
-                  : "text-slate hover:text-ink"
+                  ? "bg-white/[0.04] text-blue-300 border-t-2 border-x border-blue-500/40 shadow-sm"
+                  : "text-white/50 hover:text-white"
               }`}
             >
               <span>{t.icon}</span>
@@ -45,10 +51,20 @@ export default function RequestsPage() {
           ))}
         </div>
 
-        {tab === "requests" && <MaintenanceTab />}
-        {tab === "visitors" && <VisitorsTab />}
-        {tab === "leaves" && <LeavesTab />}
-        {tab === "amenities" && <AmenitiesTab />}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            {tab === "requests" && <MaintenanceTab />}
+            {tab === "visitors" && <VisitorsTab />}
+            {tab === "leaves" && <LeavesTab />}
+            {tab === "amenities" && <AmenitiesTab />}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </main>
   );
@@ -97,32 +113,38 @@ function MaintenanceTab() {
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Your requests</h3>
-        {loading && <p className="text-xs text-slate">Loading…</p>}
+      <div className="lg:col-span-2 bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Your requests</h3>
+        {loading && <p className="text-xs text-white/50">Loading…</p>}
         <div className="space-y-3">
-          {items.map((r) => (
-            <div key={r.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+          {items.map((r, i) => (
+            <motion.div
+              key={r.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="p-4 rounded-xl bg-white/[0.02] border border-white/10"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-ink">{r.subject}</span>
+                <span className="text-sm font-bold text-white">{r.subject}</span>
                 <StatusPill status={r.status} />
               </div>
-              <p className="text-xs text-slate mb-1">{r.description}</p>
-              <div className="flex items-center gap-3 text-[10px] text-slate/80">
+              <p className="text-xs text-white/60 mb-1">{r.description}</p>
+              <div className="flex items-center gap-3 text-[10px] text-white/40">
                 <span>{r.category}</span>
                 <span>•</span>
                 <span>Priority: {r.priority}</span>
               </div>
-            </div>
+            </motion.div>
           ))}
           {!loading && items.length === 0 && (
-            <p className="text-xs text-slate text-center py-6">No requests raised yet.</p>
+            <p className="text-xs text-white/50 text-center py-6">No requests raised yet.</p>
           )}
         </div>
       </div>
 
-      <div className="nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Raise a request</h3>
+      <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Raise a request</h3>
         <form onSubmit={submit} className="space-y-4">
           <FieldSelect
             label="Category"
@@ -137,12 +159,12 @@ function MaintenanceTab() {
             placeholder="e.g. Fan not working"
           />
           <div>
-            <label className="block text-xs font-bold text-slate mb-1">Description</label>
+            <label className="block text-xs font-bold text-white/60 mb-1">Description</label>
             <textarea
               rows={3}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+              className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               placeholder="Add any relevant details"
             />
           </div>
@@ -152,14 +174,16 @@ function MaintenanceTab() {
             onChange={(v) => setForm({ ...form, priority: v })}
             options={["Low", "Medium", "High"]}
           />
-          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
-          <button
+          {error && <p className="text-xs text-orange-400 font-semibold">{error}</p>}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
           >
             {submitting ? "Submitting…" : "Submit request"}
-          </button>
+          </motion.button>
         </form>
       </div>
     </div>
@@ -216,32 +240,38 @@ function VisitorsTab() {
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Registered visitors</h3>
-        {loading && <p className="text-xs text-slate">Loading…</p>}
+      <div className="lg:col-span-2 bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Registered visitors</h3>
+        {loading && <p className="text-xs text-white/50">Loading…</p>}
         <div className="space-y-3">
-          {items.map((v) => (
-            <div key={v.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+          {items.map((v, i) => (
+            <motion.div
+              key={v.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="p-4 rounded-xl bg-white/[0.02] border border-white/10"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-ink">{v.visitor_name}</span>
+                <span className="text-sm font-bold text-white">{v.visitor_name}</span>
                 <StatusPill status={v.status} />
               </div>
-              <p className="text-xs text-slate">
+              <p className="text-xs text-white/60">
                 {v.relationship} · {v.phone}
               </p>
-              <p className="text-[10px] text-slate/80 mt-1">
+              <p className="text-[10px] text-white/40 mt-1">
                 {v.visit_date} · {v.expected_arrival} – {v.expected_departure}
               </p>
-            </div>
+            </motion.div>
           ))}
           {!loading && items.length === 0 && (
-            <p className="text-xs text-slate text-center py-6">No visitors registered yet.</p>
+            <p className="text-xs text-white/50 text-center py-6">No visitors registered yet.</p>
           )}
         </div>
       </div>
 
-      <div className="nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Register a visitor</h3>
+      <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Register a visitor</h3>
         <form onSubmit={submit} className="space-y-4">
           <FieldInput label="Visitor name" value={form.visitor_name} onChange={(v) => setForm({ ...form, visitor_name: v })} placeholder="e.g. Gurpreet Singh" />
           <FieldInput label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="+91 …" />
@@ -251,14 +281,16 @@ function VisitorsTab() {
             <FieldInput label="Arrival" type="time" value={form.expected_arrival} onChange={(v) => setForm({ ...form, expected_arrival: v })} />
             <FieldInput label="Departure" type="time" value={form.expected_departure} onChange={(v) => setForm({ ...form, expected_departure: v })} />
           </div>
-          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
-          <button
+          {error && <p className="text-xs text-orange-400 font-semibold">{error}</p>}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
           >
             {submitting ? "Submitting…" : "Register visitor"}
-          </button>
+          </motion.button>
         </form>
       </div>
     </div>
@@ -316,30 +348,36 @@ function LeavesTab() {
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Leave history</h3>
-        {loading && <p className="text-xs text-slate">Loading…</p>}
+      <div className="lg:col-span-2 bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Leave history</h3>
+        {loading && <p className="text-xs text-white/50">Loading…</p>}
         <div className="space-y-3">
-          {items.map((l) => (
-            <div key={l.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5">
+          {items.map((l, i) => (
+            <motion.div
+              key={l.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="p-4 rounded-xl bg-white/[0.02] border border-white/10"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-ink">{l.request_type} — {l.destination}</span>
+                <span className="text-sm font-bold text-white">{l.request_type} — {l.destination}</span>
                 <StatusPill status={l.status} />
               </div>
-              <p className="text-xs text-slate">{l.reason}</p>
-              <p className="text-[10px] text-slate/80 mt-1">
+              <p className="text-xs text-white/60">{l.reason}</p>
+              <p className="text-[10px] text-white/40 mt-1">
                 {l.start_date} → {l.end_date} · Return by {l.expected_return}
               </p>
-            </div>
+            </motion.div>
           ))}
           {!loading && items.length === 0 && (
-            <p className="text-xs text-slate text-center py-6">No leave requests yet.</p>
+            <p className="text-xs text-white/50 text-center py-6">No leave requests yet.</p>
           )}
         </div>
       </div>
 
-      <div className="nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Apply for leave</h3>
+      <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Apply for leave</h3>
         <form onSubmit={submit} className="space-y-4">
           <FieldSelect
             label="Type"
@@ -349,12 +387,12 @@ function LeavesTab() {
           />
           <FieldInput label="Destination" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} placeholder="e.g. Sector 17, Chandigarh" />
           <div>
-            <label className="block text-xs font-bold text-slate mb-1">Reason</label>
+            <label className="block text-xs font-bold text-white/60 mb-1">Reason</label>
             <textarea
               rows={2}
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+              className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -363,14 +401,16 @@ function LeavesTab() {
           </div>
           <FieldInput label="Expected return" type="time" value={form.expected_return} onChange={(v) => setForm({ ...form, expected_return: v })} />
           <FieldInput label="Emergency contact" value={form.emergency_contact} onChange={(v) => setForm({ ...form, emergency_contact: v })} placeholder="+91 …" />
-          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
-          <button
+          {error && <p className="text-xs text-orange-400 font-semibold">{error}</p>}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
           >
             {submitting ? "Submitting…" : "Submit leave request"}
-          </button>
+          </motion.button>
         </form>
       </div>
     </div>
@@ -420,27 +460,33 @@ function AmenitiesTab() {
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Your amenity bookings</h3>
-        {loading && <p className="text-xs text-slate">Loading…</p>}
+      <div className="lg:col-span-2 bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Your amenity bookings</h3>
+        {loading && <p className="text-xs text-white/50">Loading…</p>}
         <div className="space-y-3">
-          {items.map((a) => (
-            <div key={a.id} className="p-4 rounded-xl bg-sand/60 border border-ink/5 flex items-center justify-between">
+          {items.map((a, i) => (
+            <motion.div
+              key={a.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex items-center justify-between"
+            >
               <div>
-                <p className="text-sm font-bold text-ink">{a.amenity_name}</p>
-                <p className="text-[11px] text-slate">{a.booking_date} · {a.time_slot}</p>
+                <p className="text-sm font-bold text-white">{a.amenity_name}</p>
+                <p className="text-[11px] text-white/50">{a.booking_date} · {a.time_slot}</p>
               </div>
               <StatusPill status={a.status} />
-            </div>
+            </motion.div>
           ))}
           {!loading && items.length === 0 && (
-            <p className="text-xs text-slate text-center py-6">No amenity bookings yet.</p>
+            <p className="text-xs text-white/50 text-center py-6">No amenity bookings yet.</p>
           )}
         </div>
       </div>
 
-      <div className="nest-card p-6">
-        <h3 className="font-display text-lg font-bold text-ink mb-4">Book an amenity</h3>
+      <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Book an amenity</h3>
         <form onSubmit={submit} className="space-y-4">
           <FieldSelect
             label="Amenity"
@@ -450,14 +496,16 @@ function AmenitiesTab() {
           />
           <FieldInput label="Date" type="date" value={form.booking_date} onChange={(v) => setForm({ ...form, booking_date: v })} />
           <FieldInput label="Time slot" value={form.time_slot} onChange={(v) => setForm({ ...form, time_slot: v })} placeholder="e.g. 06:00 PM - 08:00 PM" />
-          {error && <p className="text-xs text-coral font-semibold">{error}</p>}
-          <button
+          {error && <p className="text-xs text-orange-400 font-semibold">{error}</p>}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-marine hover:bg-ink text-white font-bold text-xs rounded-full shadow-md transition disabled:opacity-50"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors disabled:opacity-50"
           >
             {submitting ? "Booking…" : "Book amenity"}
-          </button>
+          </motion.button>
         </form>
       </div>
     </div>
@@ -470,10 +518,10 @@ function StatusPill({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
   const color =
     s.includes("approve") || s.includes("confirm") || s.includes("resolve")
-      ? "bg-moss/10 text-moss"
+      ? "bg-green-500/10 text-green-400"
       : s.includes("reject") || s.includes("cancel")
-      ? "bg-coral/10 text-coral"
-      : "bg-amber/10 text-amber";
+      ? "bg-red-500/10 text-red-400"
+      : "bg-orange-500/10 text-orange-400";
   return <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${color}`}>{status}</span>;
 }
 
@@ -492,13 +540,13 @@ function FieldInput({
 }) {
   return (
     <div>
-      <label className="block text-xs font-bold text-slate mb-1">{label}</label>
+      <label className="block text-xs font-bold text-white/60 mb-1">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink focus:ring-2 focus:ring-marine"
+        className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
     </div>
   );
@@ -517,11 +565,11 @@ function FieldSelect({
 }) {
   return (
     <div>
-      <label className="block text-xs font-bold text-slate mb-1">{label}</label>
+      <label className="block text-xs font-bold text-white/60 mb-1">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-ink/15 rounded-xl px-3.5 py-2.5 text-xs text-ink bg-white focus:ring-2 focus:ring-marine"
+        className="w-full border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white bg-[#151517] focus:ring-2 focus:ring-blue-500 focus:outline-none"
       >
         {options.map((o) => (
           <option key={o} value={o}>

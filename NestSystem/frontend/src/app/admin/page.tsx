@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import api, { clearToken } from "@/lib/api";
 
 type Tab = "overview" | "bookings" | "payments" | "students" | "hostels" | "reassign" | "settings" | "mess";
@@ -198,15 +199,15 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-sand/40">
-      <header className="border-b border-ink/10 bg-ink text-white sticky top-0 z-10">
+    <main className="min-h-screen bg-[#0B0B0C]">
+      <header className="border-b border-white/10 bg-[#151517] text-white sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <span className="font-display text-xl font-semibold">Nest · Admin</span>
+          <span className="text-xl font-semibold">NEST · Admin</span>
           <div className="flex items-center gap-4">
-            <button onClick={loadAll} className="text-sm text-white/70 hover:text-white">
+            <button onClick={loadAll} className="text-sm text-white/60 hover:text-blue-300 transition-colors">
               Refresh
             </button>
-            <button onClick={logout} className="text-sm text-white/70 hover:text-white">
+            <button onClick={logout} className="text-sm text-white/60 hover:text-orange-400 transition-colors">
               Log out
             </button>
           </div>
@@ -214,7 +215,7 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-10">
-        <h1 className="font-display text-3xl font-semibold mb-8">System overview</h1>
+        <h1 className="text-3xl font-semibold text-white mb-8">System overview</h1>
 
         {overview && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-10">
@@ -236,320 +237,341 @@ export default function AdminPage() {
           <TabButton active={tab === "mess"} onClick={() => setTab("mess")}>Mess</TabButton>
         </nav>
 
-        {loading && <p className="text-slate text-sm mb-4">Loading data…</p>}
+        {loading && <p className="text-white/50 text-sm mb-4">Loading data…</p>}
 
-        {tab === "overview" && overview && (
-          <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SummaryRow label="Total students" value={overview.total_students} />
-            <SummaryRow label="Total capacity" value={overview.total_capacity} />
-            <SummaryRow label="Total occupied" value={overview.total_occupied} />
-            <SummaryRow label="Occupancy %" value={`${overview.occupancy_pct}%`} />
-            <SummaryRow label="Total groups" value={overview.total_groups} />
-            <SummaryRow label="Confirmed groups" value={overview.confirmed_groups} />
-          </div>
-        )}
-
-        {tab === "bookings" && (
-          <Table
-            headers={["Group", "Cluster", "Members", "Status", "Booked at"]}
-            emptyLabel="No bookings yet."
-            rows={bookings}
-            renderRow={(b) => (
-              <tr key={b.booking_id} className="border-t border-ink/5">
-                <td className="px-4 py-3 font-medium">{b.group_code}</td>
-                <td className="px-4 py-3">Cluster {b.cluster_number}</td>
-                <td className="px-4 py-3">{b.members.map((m: any) => m.name).join(", ")}</td>
-                <td className="px-4 py-3">
-                  <Badge color="marine">{b.status.replace("_", " ")}</Badge>
-                </td>
-                <td className="px-4 py-3 text-slate">{new Date(b.created_at).toLocaleString()}</td>
-              </tr>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            {tab === "overview" && overview && (
+              <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SummaryRow label="Total students" value={overview.total_students} />
+                <SummaryRow label="Total capacity" value={overview.total_capacity} />
+                <SummaryRow label="Total occupied" value={overview.total_occupied} />
+                <SummaryRow label="Occupancy %" value={`${overview.occupancy_pct}%`} />
+                <SummaryRow label="Total groups" value={overview.total_groups} />
+                <SummaryRow label="Confirmed groups" value={overview.confirmed_groups} />
+              </div>
             )}
-          />
-        )}
 
-        {tab === "payments" && (
-          <Table
-            headers={["Student", "Roll no", "Amount", "Status", "Transaction ref"]}
-            emptyLabel="No payments yet."
-            rows={payments}
-            renderRow={(p) => (
-              <tr key={p.payment_id} className="border-t border-ink/5">
-                <td className="px-4 py-3 font-medium">{p.user_name}</td>
-                <td className="px-4 py-3">{p.roll_no}</td>
-                <td className="px-4 py-3">₹{p.amount}</td>
-                <td className="px-4 py-3">
-                  <Badge color={p.status === "paid" ? "moss" : "coral"}>{p.status}</Badge>
-                </td>
-                <td className="px-4 py-3 text-slate">{p.transaction_ref}</td>
-              </tr>
-            )}
-          />
-        )}
-
-        {tab === "students" && (
-          <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-sand text-left">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Roll no</th>
-                  <th className="px-4 py-3">CGPA</th>
-                  <th className="px-4 py-3 w-56">Update CGPA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((s) => (
-                  <StudentRow key={s.user_id} student={s} onUpdate={updateCgpa} />
-                ))}
-                {students.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-slate">
-                      No students found.
+            {tab === "bookings" && (
+              <Table
+                headers={["Group", "Cluster", "Members", "Status", "Booked at"]}
+                emptyLabel="No bookings yet."
+                rows={bookings}
+                renderRow={(b) => (
+                  <tr key={b.booking_id} className="border-t border-white/10">
+                    <td className="px-4 py-3 font-medium text-white">{b.group_code}</td>
+                    <td className="px-4 py-3 text-white/80">Cluster {b.cluster_number}</td>
+                    <td className="px-4 py-3 text-white/80">{b.members.map((m: any) => m.name).join(", ")}</td>
+                    <td className="px-4 py-3">
+                      <Badge color="blue">{b.status.replace("_", " ")}</Badge>
                     </td>
+                    <td className="px-4 py-3 text-white/50">{new Date(b.created_at).toLocaleString()}</td>
                   </tr>
                 )}
-              </tbody>
-            </table>
-          </div>
-        )}
+              />
+            )}
 
-        {tab === "hostels" && (
-          <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-sand text-left">
-                <tr>
-                  <th className="px-4 py-3">Hostel</th>
-                  <th className="px-4 py-3">Current capacity</th>
-                  <th className="px-4 py-3 w-56">Update capacity</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hostels.map((h) => (
-                  <HostelRow key={h.hostel_id} hostel={h} onUpdate={updateHostelCapacity} />
-                ))}
-                {hostels.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-slate">
-                      No hostel data available.
+            {tab === "payments" && (
+              <Table
+                headers={["Student", "Roll no", "Amount", "Status", "Transaction ref"]}
+                emptyLabel="No payments yet."
+                rows={payments}
+                renderRow={(p) => (
+                  <tr key={p.payment_id} className="border-t border-white/10">
+                    <td className="px-4 py-3 font-medium text-white">{p.user_name}</td>
+                    <td className="px-4 py-3 text-white/80">{p.roll_no}</td>
+                    <td className="px-4 py-3 text-white/80">₹{p.amount}</td>
+                    <td className="px-4 py-3">
+                      <Badge color={p.status === "paid" ? "green" : "orange"}>{p.status}</Badge>
                     </td>
+                    <td className="px-4 py-3 text-white/50">{p.transaction_ref}</td>
                   </tr>
                 )}
-              </tbody>
-            </table>
-          </div>
-        )}
+              />
+            )}
 
-        {tab === "reassign" && (
-          <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm p-6 max-w-md">
-            <h2 className="font-display text-xl font-semibold mb-4">Reassign group</h2>
-            <form onSubmit={submitReassign} className="space-y-4">
-              <div>
-                <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">
-                  Student user ID
-                </label>
-                <input
-                  value={reassignUserId}
-                  onChange={(e) => setReassignUserId(e.target.value)}
-                  className="w-full border border-ink/15 rounded-lg px-3 py-2 text-sm"
-                  placeholder="e.g. usr_1234"
-                />
+            {tab === "students" && (
+              <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/[0.05] text-left">
+                    <tr>
+                      <th className="px-4 py-3 text-white/70">Name</th>
+                      <th className="px-4 py-3 text-white/70">Roll no</th>
+                      <th className="px-4 py-3 text-white/70">CGPA</th>
+                      <th className="px-4 py-3 w-56 text-white/70">Update CGPA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((s) => (
+                      <StudentRow key={s.user_id} student={s} onUpdate={updateCgpa} />
+                    ))}
+                    {students.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-white/50">
+                          No students found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">
-                  Target group code
-                </label>
-                <input
-                  value={reassignGroupCode}
-                  onChange={(e) => setReassignGroupCode(e.target.value)}
-                  className="w-full border border-ink/15 rounded-lg px-3 py-2 text-sm"
-                  placeholder="e.g. GRP-042"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={reassignSubmitting}
-                className="w-full bg-ink text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {reassignSubmitting ? "Reassigning…" : "Reassign student"}
-              </button>
-            </form>
-          </div>
-        )}
+            )}
 
-        {tab === "settings" && (
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-xl2 border border-ink/5 shadow-sm p-6">
-              <h2 className="font-display text-xl font-semibold mb-4">Allocation window settings</h2>
-              {settingsForm ? (
-                <form onSubmit={saveSettings} className="space-y-4">
+            {tab === "hostels" && (
+              <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/[0.05] text-left">
+                    <tr>
+                      <th className="px-4 py-3 text-white/70">Hostel</th>
+                      <th className="px-4 py-3 text-white/70">Current capacity</th>
+                      <th className="px-4 py-3 w-56 text-white/70">Update capacity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hostels.map((h) => (
+                      <HostelRow key={h.hostel_id} hostel={h} onUpdate={updateHostelCapacity} />
+                    ))}
+                    {hostels.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-white/50">
+                          No hostel data available.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {tab === "reassign" && (
+              <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-6 max-w-md">
+                <h2 className="text-xl font-semibold text-white mb-4">Reassign group</h2>
+                <form onSubmit={submitReassign} className="space-y-4">
                   <div>
-                    <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">
-                      Allotment date
+                    <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">
+                      Student user ID
                     </label>
                     <input
-                      type="date"
-                      value={settingsForm.allotment_date || ""}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, allotment_date: e.target.value })}
-                      className="w-full border border-ink/15 rounded-lg px-3 py-2 text-sm"
+                      value={reassignUserId}
+                      onChange={(e) => setReassignUserId(e.target.value)}
+                      className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="e.g. usr_1234"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">
-                        Window start
-                      </label>
-                      <input
-                        type="time"
-                        value={settingsForm.window_start_time || ""}
-                        onChange={(e) => setSettingsForm({ ...settingsForm, window_start_time: e.target.value })}
-                        className="w-full border border-ink/15 rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">
-                        Window end
-                      </label>
-                      <input
-                        type="time"
-                        value={settingsForm.window_end_time || ""}
-                        onChange={(e) => setSettingsForm({ ...settingsForm, window_end_time: e.target.value })}
-                        className="w-full border border-ink/15 rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">
+                      Target group code
+                    </label>
+                    <input
+                      value={reassignGroupCode}
+                      onChange={(e) => setReassignGroupCode(e.target.value)}
+                      className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="e.g. GRP-042"
+                    />
                   </div>
-                  <ToggleRow
-                    label="Manual override: force window open"
-                    checked={!!settingsForm.manual_override_open}
-                    onChange={(v) => setSettingsForm({ ...settingsForm, manual_override_open: v })}
-                  />
-                  <ToggleRow
-                    label="Manual override: force window closed"
-                    checked={!!settingsForm.manual_override_closed}
-                    onChange={(v) => setSettingsForm({ ...settingsForm, manual_override_closed: v })}
-                  />
-                  <ToggleRow
-                    label="Hostel preferences open to students"
-                    checked={!!settingsForm.hostel_preferences_open}
-                    onChange={(v) => setSettingsForm({ ...settingsForm, hostel_preferences_open: v })}
-                  />
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className={`w-2.5 h-2.5 rounded-full ${settingsForm.hostel_allocation_run ? "bg-moss" : "bg-amber"}`} />
-                    <span className="text-xs text-slate">
-                      Allocation pass {settingsForm.hostel_allocation_run ? "has already been run" : "has not been run yet"}.
-                    </span>
-                  </div>
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
                     type="submit"
-                    disabled={savingSettings}
-                    className="bg-ink text-white rounded-lg px-6 py-2.5 text-sm font-medium disabled:opacity-50"
+                    disabled={reassignSubmitting}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
                   >
-                    {savingSettings ? "Saving…" : "Save settings"}
-                  </button>
+                    {reassignSubmitting ? "Reassigning…" : "Reassign student"}
+                  </motion.button>
                 </form>
-              ) : (
-                <p className="text-sm text-slate">Loading settings…</p>
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm p-6">
-              <h2 className="font-display text-lg font-semibold mb-2">Run allocation</h2>
-              <p className="text-xs text-slate mb-4">
-                Triggers the hostel allocation engine for all confirmed groups with cleared payments. This action is
-                irreversible for the current cycle — use with care.
-              </p>
-              <button
-                onClick={runAllocation}
-                disabled={runningAllocation}
-                className="w-full bg-coral hover:bg-ink text-white rounded-lg py-2.5 text-sm font-bold shadow-sm transition disabled:opacity-50"
-              >
-                {runningAllocation ? "Running allocation…" : "Run hostel allocation pass"}
-              </button>
-            </div>
-          </div>
-        )}
-        {tab === "mess" && (
-          <div className="space-y-8">
-            {/* Live poll dashboard */}
-            <div>
-              <h2 className="font-display text-xl font-semibold mb-4 flex items-center gap-2">
-                Live meal poll — today
-                <span className="text-[10px] font-bold text-marine bg-marine/10 px-2.5 py-1 rounded-full animate-pulse">
-                  ● Live
-                </span>
-              </h2>
-              <div className="grid md:grid-cols-3 gap-5">
-                {["breakfast", "lunch", "dinner"].map((meal) => {
-                  const r = livePoll?.[meal];
-                  return (
-                    <div key={meal} className="bg-white rounded-xl2 border border-ink/5 shadow-sm p-5">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className="font-display text-base font-semibold text-ink capitalize">{meal}</h3>
-                        {r && (
-                          <span
-                            className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                              r.is_open ? "bg-moss/10 text-moss" : "bg-slate/10 text-slate"
-                            }`}
-                          >
-                            {r.is_open ? "● Open" : "Closed"}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate mb-3">
-                        {r ? `${r.total_votes} votes · ${r.window_start}–${r.window_end}` : "Loading…"}
-                      </p>
-                      <div className="space-y-2">
-                        {r?.options?.map((label: string, idx: number) => {
-                          const votes = r.tally[idx] || 0;
-                          const pct = r.total_votes > 0 ? Math.round((votes / r.total_votes) * 100) : 0;
-                          return (
-                            <div key={idx} className="relative overflow-hidden rounded-lg border border-ink/10 bg-sand/40 p-2.5">
-                              <div
-                                className="absolute left-0 top-0 bottom-0 bg-marine/10"
-                                style={{ width: `${pct}%` }}
-                              />
-                              <div className="relative z-10 flex items-center justify-between text-xs">
-                                <span className="font-semibold text-ink">{label}</span>
-                                <span className="font-bold text-marine">{pct}% ({votes})</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {!r && <p className="text-xs text-slate text-center py-4">No votes yet.</p>}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
-            </div>
+            )}
 
-            {/* Weekly menu editor */}
-            <div>
-              <h2 className="font-display text-xl font-semibold mb-4">Weekly mess menu</h2>
-              <p className="text-xs text-slate mb-4">
-                Static weekly cycle (not tied to calendar dates). Edits apply immediately — students see the latest
-                version as soon as you save.
-              </p>
-              {messLoading && <p className="text-sm text-slate">Loading menu…</p>}
-              <div className="space-y-4">
-                {weekMenu.map((day) => (
-                  <MenuDayCard key={day.day_of_week} day={day} onSave={saveMenuSlot} />
-                ))}
+            {tab === "settings" && (
+              <div className="grid lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-6">
+                  <h2 className="text-xl font-semibold text-white mb-4">Allocation window settings</h2>
+                  {settingsForm ? (
+                    <form onSubmit={saveSettings} className="space-y-4">
+                      <div>
+                        <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">
+                          Allotment date
+                        </label>
+                        <input
+                          type="date"
+                          value={settingsForm.allotment_date || ""}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, allotment_date: e.target.value })}
+                          className="w-full border border-white/15 bg-white/[0.03] text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">
+                            Window start
+                          </label>
+                          <input
+                            type="time"
+                            value={settingsForm.window_start_time || ""}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, window_start_time: e.target.value })}
+                            className="w-full border border-white/15 bg-white/[0.03] text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">
+                            Window end
+                          </label>
+                          <input
+                            type="time"
+                            value={settingsForm.window_end_time || ""}
+                            onChange={(e) => setSettingsForm({ ...settingsForm, window_end_time: e.target.value })}
+                            className="w-full border border-white/15 bg-white/[0.03] text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      <ToggleRow
+                        label="Manual override: force window open"
+                        checked={!!settingsForm.manual_override_open}
+                        onChange={(v) => setSettingsForm({ ...settingsForm, manual_override_open: v })}
+                      />
+                      <ToggleRow
+                        label="Manual override: force window closed"
+                        checked={!!settingsForm.manual_override_closed}
+                        onChange={(v) => setSettingsForm({ ...settingsForm, manual_override_closed: v })}
+                      />
+                      <ToggleRow
+                        label="Hostel preferences open to students"
+                        checked={!!settingsForm.hostel_preferences_open}
+                        onChange={(v) => setSettingsForm({ ...settingsForm, hostel_preferences_open: v })}
+                      />
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className={`w-2.5 h-2.5 rounded-full ${settingsForm.hostel_allocation_run ? "bg-green-500" : "bg-orange-400"}`} />
+                        <span className="text-xs text-white/60">
+                          Allocation pass {settingsForm.hostel_allocation_run ? "has already been run" : "has not been run yet"}.
+                        </span>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        type="submit"
+                        disabled={savingSettings}
+                        className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {savingSettings ? "Saving…" : "Save settings"}
+                      </motion.button>
+                    </form>
+                  ) : (
+                    <p className="text-sm text-white/50">Loading settings…</p>
+                  )}
+                </div>
+
+                <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-6">
+                  <h2 className="text-lg font-semibold text-white mb-2">Run allocation</h2>
+                  <p className="text-xs text-white/60 mb-4">
+                    Triggers the hostel allocation engine for all confirmed groups with cleared payments. This action is
+                    irreversible for the current cycle — use with care.
+                  </p>
+                  <motion.button
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={runAllocation}
+                    disabled={runningAllocation}
+                    className="w-full bg-orange-500 hover:bg-orange-400 text-white rounded-lg py-2.5 text-sm font-bold shadow-[0_0_20px_-6px] shadow-orange-500/50 transition-colors disabled:opacity-50"
+                  >
+                    {runningAllocation ? "Running allocation…" : "Run hostel allocation pass"}
+                  </motion.button>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
+            {tab === "mess" && (
+              <div className="space-y-8">
+                {/* Live poll dashboard */}
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                    Live meal poll — today
+                    <span className="text-[10px] font-bold text-blue-300 bg-blue-500/10 px-2.5 py-1 rounded-full animate-pulse">
+                      ● Live
+                    </span>
+                  </h2>
+                  <div className="grid md:grid-cols-3 gap-5">
+                    {["breakfast", "lunch", "dinner"].map((meal) => {
+                      const r = livePoll?.[meal];
+                      return (
+                        <div key={meal} className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-5">
+                          <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-base font-semibold text-white capitalize">{meal}</h3>
+                            {r && (
+                              <span
+                                className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                                  r.is_open ? "bg-green-500/10 text-green-400" : "bg-white/10 text-white/50"
+                                }`}
+                              >
+                                {r.is_open ? "● Open" : "Closed"}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-white/50 mb-3">
+                            {r ? `${r.total_votes} votes · ${r.window_start}–${r.window_end}` : "Loading…"}
+                          </p>
+                          <div className="space-y-2">
+                            {r?.options?.map((label: string, idx: number) => {
+                              const votes = r.tally[idx] || 0;
+                              const pct = r.total_votes > 0 ? Math.round((votes / r.total_votes) * 100) : 0;
+                              return (
+                                <div key={idx} className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+                                  <div
+                                    className="absolute left-0 top-0 bottom-0 bg-blue-500/15"
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                  <div className="relative z-10 flex items-center justify-between text-xs">
+                                    <span className="font-semibold text-white">{label}</span>
+                                    <span className="font-bold text-blue-300">{pct}% ({votes})</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {!r && <p className="text-xs text-white/50 text-center py-4">No votes yet.</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Weekly menu editor */}
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-4">Weekly mess menu</h2>
+                  <p className="text-xs text-white/50 mb-4">
+                    Static weekly cycle (not tied to calendar dates). Edits apply immediately — students see the latest
+                    version as soon as you save.
+                  </p>
+                  {messLoading && <p className="text-sm text-white/50">Loading menu…</p>}
+                  <div className="space-y-4">
+                    {weekMenu.map((day) => (
+                      <MenuDayCard key={day.day_of_week} day={day} onSave={saveMenuSlot} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium shadow-lg text-white ${
-            toast.type === "ok" ? "bg-moss" : "bg-coral"
-          }`}
-        >
-          {toast.msg}
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium shadow-lg text-white ${
+              toast.type === "ok" ? "bg-green-600" : "bg-orange-500"
+            }`}
+          >
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
@@ -571,8 +593,8 @@ function MenuDayCard({
   }
 
   return (
-    <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm p-5">
-      <h3 className="font-display text-base font-semibold text-ink mb-3">{day.day_name}</h3>
+    <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm p-5">
+      <h3 className="text-base font-semibold text-white mb-3">{day.day_name}</h3>
       <div className="grid md:grid-cols-3 gap-4">
         <MealField label="Breakfast" value={breakfast} onChange={setBreakfast} onSave={() => save("breakfast", breakfast)} />
         <MealField label="Lunch" value={lunch} onChange={setLunch} onSave={() => save("lunch", lunch)} />
@@ -595,17 +617,17 @@ function MealField({
 }) {
   return (
     <div>
-      <label className="block text-xs uppercase tracking-wide text-slate font-semibold mb-1">{label}</label>
+      <label className="block text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">{label}</label>
       <textarea
         rows={3}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Comma-separated dish names"
-        className="w-full border border-ink/15 rounded-lg px-3 py-2 text-xs text-ink focus:ring-2 focus:ring-marine"
+        className="w-full border border-white/15 bg-white/[0.03] text-white placeholder-white/30 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
       />
       <button
         onClick={onSave}
-        className="mt-2 w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium"
+        className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-1.5 text-xs font-medium transition-colors"
       >
         Save {label}
       </button>
@@ -615,9 +637,9 @@ function MealField({
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center justify-between p-3 rounded-lg bg-sand/60 border border-ink/5 cursor-pointer">
-      <span className="text-xs font-semibold text-ink">{label}</span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 accent-ink" />
+    <label className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/10 cursor-pointer">
+      <span className="text-xs font-semibold text-white">{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 accent-blue-600" />
     </label>
   );
 }
@@ -625,21 +647,21 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 function StudentRow({ student, onUpdate }: { student: any; onUpdate: (userId: string, cgpa: string) => void }) {
   const [value, setValue] = useState(String(student.cgpa ?? ""));
   return (
-    <tr className="border-t border-ink/5">
-      <td className="px-4 py-3 font-medium">{student.name}</td>
-      <td className="px-4 py-3">{student.roll_no}</td>
-      <td className="px-4 py-3">{student.cgpa ?? "—"}</td>
+    <tr className="border-t border-white/10">
+      <td className="px-4 py-3 font-medium text-white">{student.name}</td>
+      <td className="px-4 py-3 text-white/80">{student.roll_no}</td>
+      <td className="px-4 py-3 text-white/80">{student.cgpa ?? "—"}</td>
       <td className="px-4 py-3">
         <div className="flex gap-2">
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-24 border border-ink/15 rounded-lg px-2 py-1 text-sm"
+            className="w-24 border border-white/15 bg-white/[0.03] text-white rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
             placeholder="CGPA"
           />
           <button
             onClick={() => onUpdate(student.user_id, value)}
-            className="px-3 py-1 rounded-lg bg-ink text-white text-xs font-medium"
+            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
           >
             Save
           </button>
@@ -652,20 +674,20 @@ function StudentRow({ student, onUpdate }: { student: any; onUpdate: (userId: st
 function HostelRow({ hostel, onUpdate }: { hostel: any; onUpdate: (hostelId: string, capacity: string) => void }) {
   const [value, setValue] = useState(String(hostel.capacity ?? ""));
   return (
-    <tr className="border-t border-ink/5">
-      <td className="px-4 py-3 font-medium">{hostel.name}</td>
-      <td className="px-4 py-3">{hostel.capacity}</td>
+    <tr className="border-t border-white/10">
+      <td className="px-4 py-3 font-medium text-white">{hostel.name}</td>
+      <td className="px-4 py-3 text-white/80">{hostel.capacity}</td>
       <td className="px-4 py-3">
         <div className="flex gap-2">
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-24 border border-ink/15 rounded-lg px-2 py-1 text-sm"
+            className="w-24 border border-white/15 bg-white/[0.03] text-white rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
             placeholder="Capacity"
           />
           <button
             onClick={() => onUpdate(hostel.hostel_id, value)}
-            className="px-3 py-1 rounded-lg bg-ink text-white text-xs font-medium"
+            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
           >
             Save
           </button>
@@ -687,12 +709,12 @@ function Table({
   emptyLabel: string;
 }) {
   return (
-    <div className="bg-white rounded-xl2 border border-ink/5 shadow-sm overflow-x-auto">
+    <div className="bg-white/[0.03] rounded-xl border border-white/10 shadow-sm overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-sand text-left">
+        <thead className="bg-white/[0.05] text-left">
           <tr>
             {headers.map((h) => (
-              <th key={h} className="px-4 py-3">
+              <th key={h} className="px-4 py-3 text-white/70">
                 {h}
               </th>
             ))}
@@ -702,7 +724,7 @@ function Table({
           {rows.map(renderRow)}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={headers.length} className="px-4 py-6 text-center text-slate">
+              <td colSpan={headers.length} className="px-4 py-6 text-center text-white/50">
                 {emptyLabel}
               </td>
             </tr>
@@ -713,9 +735,14 @@ function Table({
   );
 }
 
-function Badge({ children, color }: { children: React.ReactNode; color: "marine" | "moss" | "coral" }) {
+function Badge({ children, color }: { children: React.ReactNode; color: "blue" | "green" | "orange" }) {
+  const colorMap: Record<string, string> = {
+    blue: "bg-blue-500/10 text-blue-300",
+    green: "bg-green-500/10 text-green-400",
+    orange: "bg-orange-500/10 text-orange-400",
+  };
   return (
-    <span className={`px-2 py-1 rounded-full bg-${color}/10 text-${color} text-xs font-semibold capitalize`}>
+    <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${colorMap[color]}`}>
       {children}
     </span>
   );
@@ -723,31 +750,41 @@ function Badge({ children, color }: { children: React.ReactNode; color: "marine"
 
 function SummaryRow({ label, value }: { label: string; value: any }) {
   return (
-    <div className="flex items-center justify-between border-b border-ink/5 pb-3">
-      <span className="text-slate text-sm">{label}</span>
-      <span className="font-display text-lg font-semibold text-ink">{value}</span>
+    <div className="flex items-center justify-between border-b border-white/10 pb-3">
+      <span className="text-white/60 text-sm">{label}</span>
+      <span className="text-lg font-semibold text-white">{value}</span>
     </div>
   );
 }
 
 function MetricCard({ label, value }: { label: string; value: any }) {
   return (
-    <div className="bg-white rounded-xl2 p-5 border border-ink/5 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-slate font-semibold mb-1">{label}</p>
-      <p className="font-display text-2xl font-semibold text-ink">{value}</p>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, borderColor: "rgba(96,165,250,0.4)" }}
+      transition={{ duration: 0.3 }}
+      className="bg-white/[0.03] rounded-xl p-5 border border-white/10 shadow-sm transition-colors"
+    >
+      <p className="text-xs uppercase tracking-wide text-white/50 font-semibold mb-1">{label}</p>
+      <p className="text-2xl font-semibold text-white">{value}</p>
+    </motion.div>
   );
 }
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`px-5 py-2 rounded-full text-sm font-medium transition ${
-        active ? "bg-ink text-white" : "bg-white border border-ink/15 text-slate hover:border-ink/30"
+      className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${
+        active
+          ? "bg-blue-600 text-white"
+          : "bg-white/[0.03] border border-white/15 text-white/60 hover:border-blue-500/40 hover:text-white"
       }`}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 
 interface NotificationItem {
@@ -80,86 +81,105 @@ export default function NotificationCenter({ isOpen, onClose, onUpdateCount }: N
     if (onUpdateCount) onUpdateCount(0);
   }
 
-  if (!isOpen) return null;
+  const categoryStyle: Record<string, string> = {
+    Payment: "bg-orange-500/15 text-orange-300",
+    Notice: "bg-blue-500/15 text-blue-300",
+    Maintenance: "bg-purple-500/15 text-purple-300",
+  };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-ink/40 backdrop-blur-xs transition-opacity animate-fadeIn">
-      <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
-          {/* Header */}
-          <div className="p-6 border-b border-ink/10 flex items-center justify-between bg-sand/50">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🔔</span>
-              <h2 className="font-display text-xl font-bold text-ink">Notifications</h2>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-ink/5 hover:bg-ink/10 flex items-center justify-center text-ink text-sm font-bold"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+        >
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-screen max-w-md bg-[#111113] shadow-2xl flex flex-col border-l border-white/10"
             >
-              ✕
-            </button>
-          </div>
-
-          {/* Action Bar */}
-          <div className="px-6 py-3 border-b border-ink/5 flex items-center justify-between text-xs text-slate">
-            <span>{notifications.filter((n) => !n.is_read).length} unread</span>
-            <button
-              onClick={markAllAsRead}
-              className="text-marine font-semibold hover:underline"
-            >
-              Mark all as read
-            </button>
-          </div>
-
-          {/* Notifications List */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {notifications.length === 0 ? (
-              <div className="text-center py-12 text-slate">
-                <p className="text-3xl mb-2">🎉</p>
-                <p className="font-medium text-ink">All caught up!</p>
-                <p className="text-xs">No new notifications right now.</p>
-              </div>
-            ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`p-4 rounded-xl border transition ${
-                    n.is_read
-                      ? "bg-white border-ink/10 opacity-75"
-                      : "bg-marine/5 border-marine/20 shadow-xs"
-                  }`}
+              {/* Header */}
+              <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🔔</span>
+                  <h2 className="text-xl font-bold text-white">Notifications</h2>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white text-sm font-bold transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <span className="font-semibold text-sm text-ink">{n.title}</span>
-                    <span
-                      className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                        n.category === "Payment"
-                          ? "bg-amber-100 text-amber-800"
-                          : n.category === "Notice"
-                          ? "bg-blue-100 text-blue-800"
-                          : n.category === "Maintenance"
-                          ? "bg-orange-100 text-orange-800"
-                          : "bg-emerald-100 text-emerald-800"
+                  ✕
+                </button>
+              </div>
+
+              {/* Action Bar */}
+              <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between text-xs text-white/50">
+                <span>{notifications.filter((n) => !n.is_read).length} unread</span>
+                <button
+                  onClick={markAllAsRead}
+                  className="text-blue-400 font-semibold hover:text-blue-300 transition-colors"
+                >
+                  Mark all as read
+                </button>
+              </div>
+
+              {/* Notifications List */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {notifications.length === 0 ? (
+                  <div className="text-center py-12 text-white/50">
+                    <p className="text-3xl mb-2">🎉</p>
+                    <p className="font-medium text-white">All caught up!</p>
+                    <p className="text-xs">No new notifications right now.</p>
+                  </div>
+                ) : (
+                  notifications.map((n, i) => (
+                    <motion.div
+                      key={n.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: i * 0.05, ease: "easeOut" }}
+                      className={`p-4 rounded-xl border transition-colors ${
+                        n.is_read
+                          ? "bg-white/[0.02] border-white/10 opacity-60"
+                          : "bg-blue-500/[0.06] border-blue-500/20 shadow-sm"
                       }`}
                     >
-                      {n.category}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate leading-relaxed mb-2">{n.message}</p>
-                  <span className="text-[10px] text-slate/70">
-                    {new Date(n.created_at).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
-              ))
-            )}
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className="font-semibold text-sm text-white">{n.title}</span>
+                        <span
+                          className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                            categoryStyle[n.category] || "bg-green-500/15 text-green-300"
+                          }`}
+                        >
+                          {n.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-white/60 leading-relaxed mb-2">{n.message}</p>
+                      <span className="text-[10px] text-white/40">
+                        {new Date(n.created_at).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </motion.div>
           </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

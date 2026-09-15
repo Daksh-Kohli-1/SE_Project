@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import BookingProgress from "@/components/BookingProgress";
@@ -62,109 +63,145 @@ export default function Dashboard() {
   if (group?.status === "prefs_submitted" || booking) currentStage = 3;
   if (booking && paymentStatus === "paid") currentStage = 4;
 
+  const fadeUp = {
+    hidden: { opacity: 0, y: 16 },
+    show: (i: number = 0) => ({
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.4, delay: i * 0.08, ease: "easeOut" as const },
+    }),
+  };
+
   return (
-    <main className="min-h-screen pb-16 bg-sand">
+    <main className="min-h-screen pb-16 bg-[#0B0B0C]">
       <Navbar active="/dashboard" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* SOS Confirmation Banner */}
-        {sosSent && (
-          <div className="mb-6 p-4 rounded-2xl bg-crimson/10 border border-crimson/30 flex items-center justify-between animate-fadeIn">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🚨</span>
-              <div>
-                <p className="font-bold text-crimson text-sm">Emergency Alert Sent!</p>
-                <p className="text-xs text-slate">
-                  Hostel Warden & Security have received your SOS with location Room {user?.room_no || "N/A"} ({user?.hostel_name || "Hostel"}).
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setSosSent(false)}
-              className="text-xs font-bold text-slate hover:text-ink px-3 py-1 bg-white rounded-lg border border-ink/10"
+        <AnimatePresence>
+          {sosSent && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-between"
             >
-              Dismiss
-            </button>
-          </div>
-        )}
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🚨</span>
+                <div>
+                  <p className="font-bold text-red-400 text-sm">Emergency Alert Sent!</p>
+                  <p className="text-xs text-white/60">
+                    Hostel Warden & Security have received your SOS with location Room {user?.room_no || "N/A"} ({user?.hostel_name || "Hostel"}).
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSosSent(false)}
+                className="text-xs font-bold text-white/60 hover:text-white px-3 py-1 bg-white/5 rounded-lg border border-white/10 transition-colors"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Welcome Header */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <motion.div
+          initial="hidden"
+          animate="show"
+          custom={0}
+          variants={fadeUp}
+          className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
+        >
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1">
+            <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1">
               Welcome back, {user?.name || "Student"} 👋
             </h1>
-            <p className="text-slate text-sm sm:text-base">
+            <p className="text-white/60 text-sm sm:text-base">
               A better hostel life, together.
             </p>
           </div>
 
           {/* Compact Student / Room Summary Bar */}
-          <div className="bg-white rounded-2xl p-4 border border-ink/10 shadow-xs flex items-center gap-4 flex-wrap">
+          <div className="bg-white/[0.03] rounded-2xl p-4 border border-white/10 shadow-sm flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-marine/10 text-marine flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-300 flex items-center justify-center font-bold">
                 🏢
               </div>
               <div>
-                <p className="text-[10px] uppercase font-bold tracking-wider text-slate">Hostel & Room</p>
-                <p className="text-sm font-bold text-ink">{user?.hostel_name || "Unassigned"}</p>
+                <p className="text-[10px] uppercase font-bold tracking-wider text-white/50">Hostel & Room</p>
+                <p className="text-sm font-bold text-white">{user?.hostel_name || "Unassigned"}</p>
               </div>
             </div>
-            <div className="h-8 w-px bg-ink/10 hidden sm:block" />
+            <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-lg bg-moss/10 text-moss font-bold text-xs">
+              <span className="px-3 py-1 rounded-lg bg-green-500/10 text-green-400 font-bold text-xs">
                 Room {user?.room_no || "N/A"}
               </span>
-              <span className="text-xs text-slate font-medium">
+              <span className="text-xs text-white/60 font-medium">
                 Allocated
               </span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* 4 Summary Cards Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           {/* Card 1: Room Allocation */}
-          <div className="nest-card p-5 flex flex-col justify-between">
+          <motion.div
+            initial="hidden"
+            animate="show"
+            custom={1}
+            variants={fadeUp}
+            whileHover={{ y: -3 }}
+            className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-5 flex flex-col justify-between transition-colors hover:border-blue-500/30"
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs uppercase font-bold tracking-wider text-slate">Room Allocation</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-moss animate-pulse" />
+                <span className="text-xs uppercase font-bold tracking-wider text-white/50">Room Allocation</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
               </div>
-              <p className="font-display text-2xl font-bold text-moss mb-1">Allocated</p>
-              <p className="text-xs text-slate mb-4">
-                Room <strong className="text-ink font-semibold">{user?.room_no || "N/A"}</strong>
+              <p className="text-2xl font-semibold text-green-400 mb-1">Allocated</p>
+              <p className="text-xs text-white/50 mb-4">
+                Room <strong className="text-white font-semibold">{user?.room_no || "N/A"}</strong>
               </p>
             </div>
             <Link
               href="/clusters"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-marine hover:underline group"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors group"
             >
-              View on map <span className="group-hover:translate-x-1 transition">→</span>
+              View on map <span className="group-hover:translate-x-1 transition-transform">→</span>
             </Link>
-          </div>
+          </motion.div>
 
           {/* Card 2: Fee Payment */}
-          <div className="nest-card p-5 flex flex-col justify-between">
+          <motion.div
+            initial="hidden"
+            animate="show"
+            custom={2}
+            variants={fadeUp}
+            whileHover={{ y: -3 }}
+            className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-5 flex flex-col justify-between transition-colors hover:border-orange-500/30"
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs uppercase font-bold tracking-wider text-slate">Fee Payment</span>
-                <span className={`w-2.5 h-2.5 rounded-full ${paymentStatus === "paid" ? "bg-moss" : "bg-amber"}`} />
+                <span className="text-xs uppercase font-bold tracking-wider text-white/50">Fee Payment</span>
+                <span className={`w-2.5 h-2.5 rounded-full ${paymentStatus === "paid" ? "bg-green-500" : "bg-orange-400"}`} />
               </div>
-              <p className={`font-display text-2xl font-bold ${paymentStatus === "paid" ? "text-moss" : "text-amber"} mb-1`}>
+              <p className={`text-2xl font-semibold mb-1 ${paymentStatus === "paid" ? "text-green-400" : "text-orange-400"}`}>
                 {paymentStatus === "paid" ? "Paid" : "Pending"}
               </p>
-              <p className="text-xs text-slate mb-4">
-                Amount: <strong className="text-ink font-semibold">₹60,000</strong>
+              <p className="text-xs text-white/50 mb-4">
+                Amount: <strong className="text-white font-semibold">₹60,000</strong>
               </p>
             </div>
             <Link
               href="/payment"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-coral hover:underline group"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-orange-400 hover:text-orange-300 transition-colors group"
             >
               {paymentStatus === "paid" ? "View receipt →" : "Pay now →"}
             </Link>
-          </div>
+          </motion.div>
 
           {/* Card 3: Mess Attendance */}
           {/* <div className="nest-card p-5 flex flex-col justify-between">
@@ -240,25 +277,31 @@ export default function Dashboard() {
             </div> */}
 
             {/* Today's Mess Menu Card */}
-            <div className="nest-card p-6">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={3}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">🍲</span>
-                  <h3 className="font-display text-xl font-bold text-ink">Today's Mess Menu</h3>
+                  <h3 className="text-xl font-semibold text-white">Today's Mess Menu</h3>
                 </div>
-                <Link href="/mess" className="text-xs font-bold text-marine hover:underline">
+                <Link href="/mess" className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors">
                   View full menu →
                 </Link>
               </div>
 
               <div className="grid sm:grid-cols-3 gap-4">
                 {/* Breakfast */}
-                <div className="bg-sand/60 rounded-xl p-4 border border-ink/5">
+                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-amber">Breakfast</span>
-                    <span className="text-[10px] font-semibold text-slate">7:30 – 9:30 AM</span>
+                    <span className="font-bold text-xs uppercase tracking-wider text-orange-400">Breakfast</span>
+                    <span className="text-[10px] font-semibold text-white/40">7:30 – 9:30 AM</span>
                   </div>
-                  <ul className="text-xs text-ink/80 space-y-1">
+                  <ul className="text-xs text-white/70 space-y-1">
                     <li>• Poha</li>
                     <li>• Boiled Eggs</li>
                     <li>• Fresh Fruit</li>
@@ -267,13 +310,13 @@ export default function Dashboard() {
                 </div>
 
                 {/* Lunch */}
-                <div className="bg-sand/60 rounded-xl p-4 border border-ink/5 ring-1 ring-marine/20">
+                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10 ring-1 ring-blue-500/20">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-marine">Lunch</span>
-                    <span className="text-[10px] font-semibold text-slate">12:00 – 2:00 PM</span>
+                    <span className="font-bold text-xs uppercase tracking-wider text-blue-300">Lunch</span>
+                    <span className="text-[10px] font-semibold text-white/40">12:00 – 2:00 PM</span>
                   </div>
-                  <ul className="text-xs text-ink/80 space-y-1">
-                    <li className="font-semibold text-ink">• Rajma Chawal</li>
+                  <ul className="text-xs text-white/70 space-y-1">
+                    <li className="font-semibold text-white">• Rajma Chawal</li>
                     <li>• Mixed Veg</li>
                     <li>• Fresh Curd</li>
                     <li>• Salad</li>
@@ -281,125 +324,152 @@ export default function Dashboard() {
                 </div>
 
                 {/* Dinner */}
-                <div className="bg-sand/60 rounded-xl p-4 border border-ink/5">
+                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-moss">Dinner</span>
-                    <span className="text-[10px] font-semibold text-slate">7:00 – 9:00 PM</span>
+                    <span className="font-bold text-xs uppercase tracking-wider text-purple-300">Dinner</span>
+                    <span className="text-[10px] font-semibold text-white/40">7:00 – 9:00 PM</span>
                   </div>
-                  <ul className="text-xs text-ink/80 space-y-1">
+                  <ul className="text-xs text-white/70 space-y-1">
                     <li>• Paneer Curry</li>
                     <li>• Butter Roti</li>
                     <li>• Salad</li>
                   </ul>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Quick Action Grid */}
             <div className="grid sm:grid-cols-3 gap-5">
               {/* Card A: Upcoming Leave */}
-              <div className="nest-card p-5 flex flex-col justify-between">
+              <motion.div
+                initial="hidden"
+                animate="show"
+                custom={4}
+                variants={fadeUp}
+                whileHover={{ y: -3 }}
+                className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-5 flex flex-col justify-between transition-colors hover:border-blue-500/30"
+              >
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-base">✈️</span>
-                    <h4 className="font-display font-bold text-sm text-ink">Upcoming Leave</h4>
+                    <h4 className="font-bold text-sm text-white">Upcoming Leave</h4>
                   </div>
-                  <p className="text-xs text-slate mb-4">No upcoming leave scheduled.</p>
+                  <p className="text-xs text-white/50 mb-4">No upcoming leave scheduled.</p>
                 </div>
                 <Link
                   href="/requests"
-                  className="text-xs font-semibold text-marine hover:underline inline-flex items-center gap-1"
+                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
                 >
                   Apply for leave →
                 </Link>
-              </div>
+              </motion.div>
 
               {/* Card B: Maintenance / Complaints */}
-              <div className="nest-card p-5 flex flex-col justify-between">
+              <motion.div
+                initial="hidden"
+                animate="show"
+                custom={5}
+                variants={fadeUp}
+                whileHover={{ y: -3 }}
+                className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-5 flex flex-col justify-between transition-colors hover:border-blue-500/30"
+              >
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-base">🔧</span>
-                    <h4 className="font-display font-bold text-sm text-ink">Maintenance</h4>
+                    <h4 className="font-bold text-sm text-white">Maintenance</h4>
                   </div>
-                  <p className="text-xs text-slate mb-4">
-                    1 open request: <strong className="text-ink">Room cleaning</strong>
+                  <p className="text-xs text-white/50 mb-4">
+                    1 open request: <strong className="text-white">Room cleaning</strong>
                   </p>
                 </div>
                 <Link
                   href="/requests"
-                  className="text-xs font-semibold text-marine hover:underline inline-flex items-center gap-1"
+                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
                 >
                   View requests →
                 </Link>
-              </div>
+              </motion.div>
 
               {/* Card C: Proof of Presence */}
-              <div className="nest-card p-5 flex flex-col justify-between">
+              <motion.div
+                initial="hidden"
+                animate="show"
+                custom={6}
+                variants={fadeUp}
+                whileHover={{ y: -3 }}
+                className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-5 flex flex-col justify-between transition-colors hover:border-blue-500/30"
+              >
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-base">📍</span>
-                    <h4 className="font-display font-bold text-sm text-ink">Proof of Presence</h4>
+                    <h4 className="font-bold text-sm text-white">Proof of Presence</h4>
                   </div>
-                  <p className="text-xs text-moss font-semibold mb-1">✓ Present in hostel</p>
-                  <p className="text-[10px] text-slate mb-4">Marked at 12:14 PM</p>
+                  <p className="text-xs text-green-400 font-semibold mb-1">✓ Present in hostel</p>
+                  <p className="text-[10px] text-white/40 mb-4">Marked at 12:14 PM</p>
                 </div>
-                <span className="text-[10px] font-bold text-slate/70">Automatic Geo Sync Active</span>
-              </div>
+                <span className="text-[10px] font-bold text-white/40">Automatic Geo Sync Active</span>
+              </motion.div>
             </div>
           </div>
 
           {/* Right Column (1 Col) */}
           <div className="space-y-8">
             {/* Dashboard Notices Card */}
-            <div className="nest-card p-6">
+            <motion.div
+              initial="hidden"
+              animate="show"
+              custom={3}
+              variants={fadeUp}
+              className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
+            >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">📢</span>
-                  <h3 className="font-display text-lg font-bold text-ink">Today's Notices</h3>
+                  <h3 className="text-lg font-semibold text-white">Today's Notices</h3>
                 </div>
-                <Link href="/mess" className="text-xs font-bold text-marine hover:underline">
+                <Link href="/mess" className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors">
                   View all →
                 </Link>
               </div>
 
               <div className="space-y-4">
                 {/* Notice 1 */}
-                <div className="p-3.5 rounded-xl bg-sand/60 border border-ink/5">
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs">🛠️</span>
-                    <h4 className="text-xs font-bold text-ink">Hostel Maintenance on Block B</h4>
+                    <h4 className="text-xs font-bold text-white">Hostel Maintenance on Block B</h4>
                   </div>
-                  <p className="text-[11px] text-slate mb-2">
+                  <p className="text-[11px] text-white/60 mb-2">
                     Elevator maintenance scheduled between 2:00 PM and 5:00 PM today.
                   </p>
-                  <span className="text-[10px] text-slate/70">Today, 09:30 AM</span>
+                  <span className="text-[10px] text-white/40">Today, 09:30 AM</span>
                 </div>
 
                 {/* Notice 2 */}
-                <div className="p-3.5 rounded-xl bg-sand/60 border border-ink/5">
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs">🥗</span>
-                    <h4 className="text-xs font-bold text-ink">Mess Menu Updated</h4>
+                    <h4 className="text-xs font-bold text-white">Mess Menu Updated</h4>
                   </div>
-                  <p className="text-[11px] text-slate mb-2">
+                  <p className="text-[11px] text-white/60 mb-2">
                     Special dinner menu announced for upcoming Friday feast.
                   </p>
-                  <span className="text-[10px] text-slate/70">Yesterday, 04:15 PM</span>
+                  <span className="text-[10px] text-white/40">Yesterday, 04:15 PM</span>
                 </div>
 
                 {/* Notice 3 */}
-                <div className="p-3.5 rounded-xl bg-sand/60 border border-ink/5">
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs">🇮🇳</span>
-                    <h4 className="text-xs font-bold text-ink">Independence Day Holiday</h4>
+                    <h4 className="text-xs font-bold text-white">Independence Day Holiday</h4>
                   </div>
-                  <p className="text-[11px] text-slate mb-2">
+                  <p className="text-[11px] text-white/60 mb-2">
                     Campus entry/exit timing guidelines updated for holiday weekend.
                   </p>
-                  <span className="text-[10px] text-slate/70">02 Sep, 11:00 AM</span>
+                  <span className="text-[10px] text-white/40">02 Sep, 11:00 AM</span>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Quick Links Card */}
             {/* <div className="nest-card p-6 bg-gradient-to-br from-marine/5 to-transparent">
@@ -438,38 +508,51 @@ export default function Dashboard() {
       </div>
 
       {/* SOS Confirmation Modal */}
-      {showSosModal && (
-        <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-crimson/30">
-            <div className="w-14 h-14 rounded-full bg-crimson/10 text-crimson font-bold text-2xl flex items-center justify-center mx-auto mb-4">
-              🚨
-            </div>
-            <h3 className="font-display text-xl font-bold text-ink text-center mb-2">
-              Send Emergency Alert?
-            </h3>
-            <p className="text-xs text-slate text-center mb-6 leading-relaxed">
-              Are you sure you want to send an emergency alert? This will immediately dispatch campus security and notify the hostel warden of your location (Room {user?.room_no || "N/A"}, {user?.hostel_name || "Hostel"}).
-            </p>
+      <AnimatePresence>
+        {showSosModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="bg-[#151517] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-500/30"
+            >
+              <div className="w-14 h-14 rounded-full bg-red-500/10 text-red-400 font-bold text-2xl flex items-center justify-center mx-auto mb-4">
+                🚨
+              </div>
+              <h3 className="text-xl font-semibold text-white text-center mb-2">
+                Send Emergency Alert?
+              </h3>
+              <p className="text-xs text-white/60 text-center mb-6 leading-relaxed">
+                Are you sure you want to send an emergency alert? This will immediately dispatch campus security and notify the hostel warden of your location (Room {user?.room_no || "N/A"}, {user?.hostel_name || "Hostel"}).
+              </p>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSosModal(false)}
-                disabled={sosLoading}
-                className="flex-1 py-2.5 rounded-full border border-ink/20 text-xs font-bold text-slate hover:bg-sand transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={triggerEmergencyAlert}
-                disabled={sosLoading}
-                className="flex-1 py-2.5 rounded-full bg-crimson hover:bg-red-700 text-white text-xs font-bold shadow-md transition disabled:opacity-50"
-              >
-                {sosLoading ? "Sending..." : "Send Emergency Alert"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSosModal(false)}
+                  disabled={sosLoading}
+                  className="flex-1 py-2.5 rounded-full border border-white/15 text-xs font-bold text-white/60 hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={triggerEmergencyAlert}
+                  disabled={sosLoading}
+                  className="flex-1 py-2.5 rounded-full bg-red-500 hover:bg-red-400 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50"
+                >
+                  {sosLoading ? "Sending..." : "Send Emergency Alert"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

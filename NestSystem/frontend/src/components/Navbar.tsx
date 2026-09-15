@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import api, { clearToken } from "@/lib/api";
 import NotificationCenter from "./NotificationCenter";
 
@@ -53,16 +54,19 @@ export default function Navbar({ active }: { active?: string }) {
 
   return (
     <>
-      <header className="border-b border-ink/10 bg-white/90 backdrop-blur-md sticky top-0 z-30 shadow-xs">
+      <header className="border-b border-white/10 bg-[#0B0B0C]/90 backdrop-blur-md sticky top-0 z-30 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-8">
             <Link href="/dashboard" className="flex items-center gap-2 group">
-              <div className="w-9 h-9 rounded-xl bg-marine text-white font-display font-bold text-xl flex items-center justify-center shadow-xs group-hover:scale-105 transition">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                className="w-9 h-9 rounded-lg bg-blue-600 text-white font-bold text-xl flex items-center justify-center shadow-[0_0_16px_-4px] shadow-blue-500/60"
+              >
                 N
-              </div>
-              <span className="font-display text-2xl font-bold tracking-tight text-ink">
-                Nest
+              </motion.div>
+              <span className="text-2xl font-semibold tracking-tight text-white">
+                NEST
               </span>
             </Link>
 
@@ -74,15 +78,18 @@ export default function Navbar({ active }: { active?: string }) {
                   <Link
                     key={l.href}
                     href={l.href}
-                    className={`px-3.5 py-2 rounded-lg text-sm font-medium transition relative ${
+                    className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors relative ${
                       isActive
-                        ? "text-marine font-semibold bg-marine/5"
-                        : "text-slate hover:text-ink hover:bg-sand/60"
+                        ? "text-blue-300 font-semibold bg-blue-500/10"
+                        : "text-white/60 hover:text-white hover:bg-white/5"
                     }`}
                   >
                     {l.label}
                     {isActive && (
-                      <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-marine rounded-full animate-fadeIn" />
+                      <motion.span
+                        layoutId="nav-underline"
+                        className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-400 rounded-full"
+                      />
                     )}
                   </Link>
                 );
@@ -95,7 +102,7 @@ export default function Navbar({ active }: { active?: string }) {
             {/* Notification Bell */}
             <button
               onClick={() => setIsNotifOpen(true)}
-              className="relative p-2 rounded-full hover:bg-sand text-slate hover:text-ink transition focus:outline-none"
+              className="relative p-2 rounded-full hover:bg-white/5 text-white/60 hover:text-white transition-colors focus:outline-none"
               title="Notifications"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +114,7 @@ export default function Navbar({ active }: { active?: string }) {
                 />
               </svg>
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 bg-coral text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0B0B0C]">
                   {unreadCount}
                 </span>
               )}
@@ -117,61 +124,69 @@ export default function Navbar({ active }: { active?: string }) {
             <div className="relative">
               <button
                 onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                className="flex items-center gap-2.5 p-1.5 pl-2.5 rounded-full hover:bg-sand border border-ink/10 transition"
+                className="flex items-center gap-2.5 p-1.5 pl-2.5 rounded-full hover:bg-white/5 border border-white/10 transition-colors"
               >
-                <div className="w-7 h-7 rounded-full bg-marine/10 text-marine font-bold text-xs flex items-center justify-center border border-marine/20">
+                <div className="w-7 h-7 rounded-full bg-blue-500/10 text-blue-300 font-bold text-xs flex items-center justify-center border border-blue-500/20">
                   {displayInitials}
                 </div>
-                <span className="text-sm font-semibold text-ink hidden sm:inline-block">
+                <span className="text-sm font-semibold text-white hidden sm:inline-block">
                   {displayName}
                 </span>
-                <svg
-                  className={`w-4 h-4 text-slate transition-transform ${
-                    isUserDropdownOpen ? "rotate-180" : ""
-                  }`}
+                <motion.svg
+                  animate={{ rotate: isUserDropdownOpen ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-4 h-4 text-white/50"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
+                </motion.svg>
               </button>
 
               {/* User Dropdown Menu */}
-              {isUserDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-ink/10 py-2 z-40 animate-fadeIn">
-                  <div className="px-4 py-2 border-b border-ink/5">
-                    <p className="text-sm font-semibold text-ink">{displayName}</p>
-                    <p className="text-xs text-slate truncate">{user?.email || "avleen.kaur@thapar.edu"}</p>
-                  </div>
-                  <Link
-                    href="/profile"
-                    onClick={() => setIsUserDropdownOpen(false)}
-                    className="block px-4 py-2 text-sm text-slate hover:text-ink hover:bg-sand/60 transition"
+              <AnimatePresence>
+                {isUserDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-52 bg-[#151517] rounded-xl shadow-xl border border-white/10 py-2 z-40"
                   >
-                    👤 My Profile
-                  </Link>
-                  <Link
-                    href="/requests"
-                    onClick={() => setIsUserDropdownOpen(false)}
-                    className="block px-4 py-2 text-sm text-slate hover:text-ink hover:bg-sand/60 transition"
-                  >
-                    🛠️ Service Requests
-                  </Link>
-                  <button
-                    onClick={logout}
-                    className="w-full text-left px-4 py-2 text-sm font-medium text-coral hover:bg-coral/5 transition border-t border-ink/5"
-                  >
-                    🚪 Log out
-                  </button>
-                </div>
-              )}
+                    <div className="px-4 py-2 border-b border-white/10">
+                      <p className="text-sm font-semibold text-white">{displayName}</p>
+                      <p className="text-xs text-white/50 truncate">{user?.email || "avleen.kaur@thapar.edu"}</p>
+                    </div>
+                    <Link
+                      href="/profile"
+                      onClick={() => setIsUserDropdownOpen(false)}
+                      className="block px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                    >
+                      👤 My Profile
+                    </Link>
+                    <Link
+                      href="/requests"
+                      onClick={() => setIsUserDropdownOpen(false)}
+                      className="block px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                    >
+                      🛠️ Service Requests
+                    </Link>
+                    <button
+                      onClick={logout}
+                      className="w-full text-left px-4 py-2 text-sm font-medium text-orange-400 hover:bg-orange-500/10 transition-colors border-t border-white/10"
+                    >
+                      🚪 Log out
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="lg:hidden p-2 rounded-lg text-slate hover:text-ink hover:bg-sand transition"
+              className="lg:hidden p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {isMenuOpen ? (
@@ -185,24 +200,32 @@ export default function Navbar({ active }: { active?: string }) {
         </div>
 
         {/* Mobile Navigation Drawer */}
-        {isMenuOpen && (
-          <div className="lg:hidden border-t border-ink/10 bg-white px-4 pt-2 pb-4 space-y-1 animate-fadeIn">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                onClick={() => setIsMenuOpen(false)}
-                className={`block px-4 py-2.5 rounded-lg text-sm font-medium ${
-                  active === l.href
-                    ? "bg-marine text-white font-semibold"
-                    : "text-slate hover:bg-sand hover:text-ink"
-                }`}
-              >
-                {l.label}
-              </Link>
-            ))}
-          </div>
-        )}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="lg:hidden border-t border-white/10 bg-[#0B0B0C] px-4 pt-2 pb-4 space-y-1 overflow-hidden"
+            >
+              {links.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    active === l.href
+                      ? "bg-blue-600 text-white font-semibold"
+                      : "text-white/60 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* Notification Drawer */}

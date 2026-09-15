@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -46,55 +47,66 @@ export default function LiveMessPollPage() {
   }, []);
 
   return (
-    <main className="min-h-screen pb-20 bg-sand">
+    <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/mess" />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
           <div>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-ink mb-1 flex items-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1 flex items-center gap-3">
               Live Poll Results
-              <span className="text-[10px] font-bold text-marine bg-marine/10 px-2.5 py-1 rounded-full animate-pulse align-middle">
+              <span className="text-[10px] font-bold text-blue-300 bg-blue-500/10 px-2.5 py-1 rounded-full animate-pulse align-middle">
                 ● Live
               </span>
             </h1>
-            <p className="text-slate text-sm sm:text-base">
+            <p className="text-white/60 text-sm sm:text-base">
               How the hostel is reacting to today's meals, updating in real time.
             </p>
           </div>
           <Link
             href="/mess"
-            className="px-5 py-2.5 bg-white border border-ink/10 hover:bg-sand text-ink font-bold text-xs rounded-full shadow-xs transition inline-flex items-center gap-2 shrink-0"
+            className="px-5 py-2.5 bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] text-white font-bold text-xs rounded-full shadow-sm transition-colors inline-flex items-center gap-2 shrink-0"
           >
             ← Back to Mess & Community
           </Link>
-        </div>
+        </motion.div>
 
-        {loading && <p className="text-xs text-slate mb-4">Loading live results…</p>}
+        {loading && <p className="text-xs text-white/50 mb-4">Loading live results…</p>}
 
         <div className="grid md:grid-cols-3 gap-6">
-          {(["breakfast", "lunch", "dinner"] as MealType[]).map((meal) => {
+          {(["breakfast", "lunch", "dinner"] as MealType[]).map((meal, mi) => {
             const r = results[meal];
             const meta = MEAL_META[meal];
             return (
-              <div key={meal} className="nest-card p-6 flex flex-col">
+              <motion.div
+                key={meal}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: mi * 0.1, ease: "easeOut" }}
+                className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6 flex flex-col"
+              >
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-display text-lg font-bold text-ink flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                     <span>{meta.icon}</span> {meta.label}
                   </h3>
                   {r ? (
                     <span
                       className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                        r.is_open ? "bg-moss/10 text-moss" : "bg-slate/10 text-slate"
+                        r.is_open ? "bg-green-500/10 text-green-400" : "bg-white/10 text-white/50"
                       }`}
                     >
                       {r.is_open ? "● Open now" : "Closed"}
                     </span>
                   ) : (
-                    <span className="text-[10px] text-slate font-medium">{meta.time}</span>
+                    <span className="text-[10px] text-white/40 font-medium">{meta.time}</span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate mb-4">
+                <p className="text-[11px] text-white/50 mb-4">
                   {r
                     ? `${r.total_votes} vote${r.total_votes === 1 ? "" : "s"} · window ${formatWindowTime(r.window_start)} – ${formatWindowTime(r.window_end)}`
                     : "No data yet"}
@@ -105,31 +117,33 @@ export default function LiveMessPollPage() {
                     const votes = r.tally[idx] || 0;
                     const pct = r.total_votes > 0 ? Math.round((votes / r.total_votes) * 100) : 0;
                     return (
-                      <div key={idx} className="relative overflow-hidden rounded-xl border border-ink/10 bg-white p-3">
-                        <div
-                          className="absolute left-0 top-0 bottom-0 bg-marine/10 transition-all duration-700"
-                          style={{ width: `${pct}%` }}
+                      <div key={idx} className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.7, ease: "easeOut" }}
+                          className="absolute left-0 top-0 bottom-0 bg-blue-500/15"
                         />
                         <div className="relative z-10 flex items-center justify-between text-xs">
-                          <span className="font-bold text-ink">{label}</span>
-                          <span className="font-bold text-marine">{pct}% ({votes})</span>
+                          <span className="font-bold text-white">{label}</span>
+                          <span className="font-bold text-blue-300">{pct}% ({votes})</span>
                         </div>
                       </div>
                     );
                   })}
                   {!r && (
-                    <div className="py-6 text-center text-xs text-slate bg-sand/60 rounded-xl border border-dashed border-ink/15">
+                    <div className="py-6 text-center text-xs text-white/50 bg-white/[0.02] rounded-xl border border-dashed border-white/15">
                       No votes recorded for this meal yet today.
                     </div>
                   )}
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
 
         {lastUpdated && (
-          <p className="text-[10px] text-slate/70 text-center mt-6">
+          <p className="text-[10px] text-white/40 text-center mt-6">
             Last updated {lastUpdated.toLocaleTimeString()} · refreshes automatically every few seconds
           </p>
         )}
