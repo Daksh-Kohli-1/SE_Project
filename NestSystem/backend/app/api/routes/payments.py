@@ -12,11 +12,17 @@ To switch to a real gateway (e.g. Razorpay) later:
      calling `_on_payment_success` below.
 Everything downstream of "a payment just succeeded" (`_on_payment_success`)
 does not need to change.
+
+IMPORTANT CHANGE from the earlier draft: room allocation is no longer
+sized off "how many members have paid so far". The FIRST paid payment for
+a group triggers a single, one-time allocation decision sized to the
+group's REAL member count (see app/algorithms/allocation.py's
+handle_group_payment_paid). Every payment after that is just bookkeeping.
+This file no longer computes group_size at all - that responsibility now
+lives entirely in the allocation engine.
 """
 import random
 import string
-import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -25,17 +31,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import (
-    User, Group, GroupStatus, Payment, PaymentStatus, Booking, Preference,
+    User, Group, GroupStatus, Payment, PaymentStatus, Booking,
 )
 from app.schemas.schemas import PayFeeResponse, PaymentStatusOut
 from app.api.deps import get_current_user, require_allotment_window_open
-from app.services.allocation_service import attempt_allocation_for_group, expand_booking_for_member
+from app.services import allocation_service
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
 def _gen_transaction_ref() -> str:
     return "SIMPAY-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=10))
+
+
+def _gen_group_code(length: int = 6) -> str:
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
 @router.post("/pay", response_model=PayFeeResponse)
@@ -47,8 +57,7 @@ async def pay_fee(
     """
     Simulated fee payment for the CURRENT user only. A student does not need
     to be in a multi-member group to pay - a solo group is created on the
-    fly if the student hasn't joined/created one yet (see requirement:
-    "a single student should be able to book without forming a group").
+    fly if the student hasn't joined/created one yet.
     """
     # Auto-create a solo group if the student hasn't set one up yet.
     if not current_user.group_id:
@@ -62,14 +71,16 @@ async def pay_fee(
         select(Payment).where(Payment.user_id == current_user.id, Payment.group_id == current_user.group_id)
     )
     payment = existing.scalar_one_or_none()
+
     if payment and payment.status == PaymentStatus.paid:
-        # Payment already went through. If a room hasn't been allotted yet (e.g. the
-        # allocation step failed transiently last time), retry allocation instead of
-        # erroring out and leaving the student stuck with no way to get a room.
+        # Payment already went through. If this student still has no seat
+        # (e.g. the allocation step failed transiently, or capacity has
+        # freed up since), retry allocation instead of erroring out and
+        # leaving them stuck with no way to get a room.
         existing_booking = await db.execute(select(Booking).where(Booking.group_id == current_user.group_id))
         if existing_booking.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="You have already paid the hostel fee")
-        allocation_result = await _on_payment_success(db, current_user)
+        allocation_result = await allocation_service.handle_payment_with_lock(db, payment.id)
         return PayFeeResponse(
             message="You've already paid - retried room allotment.",
             transaction_ref=payment.transaction_ref or "",
@@ -92,8 +103,13 @@ async def pay_fee(
         )
         db.add(payment)
     await db.commit()
+    await db.refresh(payment)
 
-    allocation_result = await _on_payment_success(db, current_user)
+    # This is THE trigger point: the moment a payment is marked paid, the
+    # allocation engine runs (locked per-hostel). If this is the group's
+    # first paid member, it makes the one-time room decision for the whole
+    # group's real size; otherwise it's just a bookkeeping update.
+    allocation_result = await allocation_service.handle_payment_with_lock(db, payment.id)
 
     return PayFeeResponse(
         message="Payment successful (simulated).",
@@ -101,55 +117,6 @@ async def pay_fee(
         amount=settings.HOSTEL_FEE_AMOUNT_INR,
         allocation=allocation_result,
     )
-
-
-def _gen_group_code(length: int = 6) -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
-
-
-async def _on_payment_success(db: AsyncSession, current_user: User) -> dict | None:
-    """
-    Room allotment is driven by PAYMENT, not by waiting for every member of a
-    group to pay. As soon as a student's fee clears:
-      - If their group has no room booked yet, the allocation algorithm runs
-        immediately using the number of members who have paid SO FAR (not
-        the group's eventual size) against their submitted cluster
-        preferences. A solo payer (group size 1) gets allotted right away.
-      - If their group already has a booking (an earlier member already got
-        allotted a room), this payer is simply added into the same
-        cluster/room if a seat is free there.
-    """
-    group = await db.get(Group, current_user.group_id)
-    if not group:
-        return None
-
-    prefs_result = await db.execute(
-        select(Preference).where(Preference.group_id == group.id).order_by(Preference.rank)
-    )
-    preferences = prefs_result.scalars().all()
-
-    booking_result = await db.execute(select(Booking).where(Booking.group_id == group.id))
-    existing_booking = booking_result.scalar_one_or_none()
-
-    if existing_booking:
-        return await expand_booking_for_member(db, group, existing_booking)
-
-    if not preferences:
-        return {
-            "success": False,
-            "message": "Payment recorded. Rank your cluster preferences to get a room allotted.",
-        }
-
-    paid_result = await db.execute(
-        select(Payment).where(Payment.group_id == group.id, Payment.status == PaymentStatus.paid)
-    )
-    paid_count = len(paid_result.scalars().all())
-    # Group size is capped at 4; a solo student is simply a group of 1.
-    group_size = max(1, min(paid_count, 4))
-
-    ranked_cluster_ids = [p.cluster_id for p in preferences]
-    result = await attempt_allocation_for_group(db, group, group_size, ranked_cluster_ids)
-    return result
 
 
 @router.get("/status", response_model=list[PaymentStatusOut])

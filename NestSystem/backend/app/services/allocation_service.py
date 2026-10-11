@@ -1,161 +1,128 @@
+"""
+Redis-locking wrapper around the room-allocation engine
+(app/algorithms/allocation.py).
+
+Why the lock is now scoped to a HOSTEL, not a single cluster:
+The new engine (per the agreed rules) doesn't just try one cluster - on a
+single payment event it may scan every cluster in the hostel (empty-cluster
+lock, then whole-hostel partial-fit fallback, then chunk-splitting across
+multiple clusters). If two payments in the same hostel ran concurrently
+with only a per-cluster lock, they could both read the "no empty cluster
+here yet" state for two different clusters at once and double-reserve
+overlapping capacity elsewhere. Locking the whole hostel for the (short)
+duration of one allocation attempt is the only granularity that's actually
+safe for this algorithm's search pattern.
+"""
+
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.algorithms.allocation import ClusterState, RoomState, evaluate_cluster_for_group
+from app.algorithms.allocation import handle_group_payment_paid, AllocationResult
 from app.core.redis_client import redis_client
-from app.models.models import Cluster, Room, Group, Booking, Preference, GroupStatus, BookingStatus
+from app.models.models import Group, Payment, User
 
-LOCK_TTL_SECONDS = 10  # max time a single allocation attempt may hold the lock
-
-
-async def _load_cluster_state(db: AsyncSession, cluster_id: str) -> ClusterState | None:
-    result = await db.execute(select(Cluster).where(Cluster.id == cluster_id))
-    cluster = result.scalar_one_or_none()
-    if not cluster:
-        return None
-    rooms_result = await db.execute(select(Room).where(Room.cluster_id == cluster_id))
-    rooms = {r.room_label: r for r in rooms_result.scalars().all()}
-    room_a = rooms.get("A")
-    room_b = rooms.get("B")
-    if not room_a or not room_b:
-        return None
-    return ClusterState(
-        id=cluster.id,
-        cluster_number=cluster.cluster_number,
-        room_a=RoomState(room_a.id, "A", room_a.capacity, room_a.occupied_count),
-        room_b=RoomState(room_b.id, "B", room_b.capacity, room_b.occupied_count),
-    )
+LOCK_TTL_SECONDS = 20  # generous - a single attempt may touch every cluster in a hostel
 
 
-async def acquire_cluster_lock(cluster_id: str) -> str | None:
-    """Try to acquire a short-lived Redis lock scoped to a cluster. Returns a token or None."""
+async def acquire_hostel_lock(hostel_id: str) -> str | None:
+    """Try to acquire a short-lived Redis lock scoped to a whole hostel. Returns a token or None."""
     token = str(uuid.uuid4())
-    lock_key = f"lock:cluster:{cluster_id}"
+    lock_key = f"lock:hostel:{hostel_id}"
     acquired = await redis_client.set(lock_key, token, nx=True, ex=LOCK_TTL_SECONDS)
     return token if acquired else None
 
 
-async def release_cluster_lock(cluster_id: str, token: str) -> None:
-    lock_key = f"lock:cluster:{cluster_id}"
+async def release_hostel_lock(hostel_id: str, token: str) -> None:
+    lock_key = f"lock:hostel:{hostel_id}"
     current = await redis_client.get(lock_key)
     if current == token:
         await redis_client.delete(lock_key)
 
 
-async def attempt_allocation_for_group(
-    db: AsyncSession, group: Group, group_size: int, ranked_cluster_ids: list[str]
-) -> dict:
+def _result_to_dict(result: AllocationResult | None) -> dict:
+    if result is None:
+        return {"success": False, "message": "Payment not found or not marked paid."}
+    return {
+        "success": result.success,
+        "cluster_id": result.cluster_id,
+        "room_ids": result.room_ids,
+        "message": result.reason,
+    }
+
+
+async def handle_payment_with_lock(db: AsyncSession, payment_id: str) -> dict:
     """
-    Walks the group's ranked cluster preferences in order. For each, acquires
-    a Redis lock on that cluster, re-reads fresh occupancy from Postgres
-    (source of truth), evaluates feasibility, and if valid, writes the
-    reservation atomically before releasing the lock. This guarantees no two
-    concurrent requests can double-book the same seats (FCFS is naturally
-    enforced because whichever request acquires the lock first and commits
-    first wins; the loser re-evaluates the next preference or fails).
+    Single entry point for the payments route: call this immediately after
+    marking a Payment as paid and committing that change.
+
+    Every student books through a Group (a solo booker is simply a group of
+    1 - see seed.py / groups.py), so this is the one code path for both
+    solo and multi-member bookings. Internally this defers ALL of the
+    "empty cluster? partial fit? chunk-split? last-resort singles?"
+    decision-making to app.algorithms.allocation.handle_group_payment_paid,
+    which is only ever run ONCE per group - triggered by that group's
+    FIRST paid payment. Every subsequent payment from the same group just
+    updates payment/booking bookkeeping (see that function's docstring).
     """
-    for cluster_id in ranked_cluster_ids:
-        token = await acquire_cluster_lock(cluster_id)
-        if not token:
-            # Someone else is allocating this cluster right now; skip to next preference.
-            continue
-        try:
-            state = await _load_cluster_state(db, cluster_id)
-            if not state:
-                continue
-            result = evaluate_cluster_for_group(state, group_size)
-            if not result.success:
-                continue
+    payment = await db.get(Payment, payment_id)
+    if payment is None:
+        return _result_to_dict(None)
 
-            # Commit the reservation: bump occupied_count on the chosen room(s)
-            # using the precise per-room seat delta for this group size.
-            for room_id in result.room_ids:
-                room = await db.get(Room, room_id)
-                delta = await compute_precise_seats_added(group_size, room.room_label, room.occupied_count)
-                room.occupied_count = min(room.occupied_count + delta, room.capacity)
+    group = await db.get(Group, payment.group_id)
+    if group is None:
+        return _result_to_dict(None)
 
-            # This runs only after a payment has succeeded (see payments.py), so the room can be
-            # confirmed straight away instead of sitting in a "reserved, awaiting payment" limbo.
-            booking = Booking(
-                group_id=group.id,
-                cluster_id=cluster_id,
-                room_ids=",".join(result.room_ids),
-                status=BookingStatus.confirmed,
-                confirmed_at=datetime.now(timezone.utc),
-            )
-            db.add(booking)
+    members_result = await db.execute(select(User).where(User.group_id == group.id))
+    members = members_result.scalars().all()
 
-            group.status = GroupStatus.confirmed
-            group.booking_ready_at = datetime.now(timezone.utc)
+    # In this app, hostel pre-allocation runs per-INDIVIDUAL student, before
+    # any room-booking group exists (see hostels.py::submit_hostel_preferences -
+    # it only ever stores a solo student's own ranking). Students then form a
+    # group for room booking afterwards, from members who may have been
+    # pre-allocated to DIFFERENT hostels. Room allocation only makes sense
+    # within one hostel, so catch that mismatch explicitly instead of
+    # silently picking one member's hostel and mis-booking the rest.
+    member_hostel_ids = {m.assigned_hostel_id for m in members if m.assigned_hostel_id}
+    if len(member_hostel_ids) > 1:
+        return {
+            "success": False,
+            "message": (
+                "This group's members were pre-allocated to different hostels "
+                "and cannot book a room together. Please reform the group with "
+                "members who share the same assigned hostel."
+            ),
+        }
 
-            await db.commit()
-            return {
-                "success": True,
-                "cluster_id": cluster_id,
-                "room_ids": result.room_ids,
-                "message": result.reason,
-            }
-        finally:
-            await release_cluster_lock(cluster_id, token)
+    hostel_id = group.assigned_hostel_id or (member_hostel_ids.pop() if member_hostel_ids else None)
+    if hostel_id is None:
+        # No hostel assigned yet (hostel pre-allocation hasn't run for this
+        # student/group) - nothing shared to lock, the engine will just
+        # return a clear failure message.
+        result = await handle_group_payment_paid(db, payment_id)
+        return _result_to_dict(result)
 
-    return {"success": False, "message": "No feasible cluster found among ranked preferences."}
+    # Backfill: any member missing assigned_hostel_id (e.g. they joined this
+    # group after the hostel pre-allocation pass already ran for the rest)
+    # gets stamped with the group's resolved hostel now, so their own User
+    # record stays consistent with where they're actually about to be seated.
+    needs_commit = False
+    for m in members:
+        if not m.assigned_hostel_id:
+            m.assigned_hostel_id = hostel_id
+            needs_commit = True
+    if needs_commit:
+        await db.commit()
 
-
-async def expand_booking_for_member(db: AsyncSession, group: Group, booking: Booking) -> dict:
-    """
-    Called when an ADDITIONAL member of an already-allotted group pays their
-    fee. Tries to seat them in the same cluster/rooms the group already has,
-    since group members want to live together. This lets rooms fill up
-    incrementally, member-by-member, as each person's payment clears -
-    nobody has to wait for the whole group to pay before anyone gets a seat.
-    """
-    token = await acquire_cluster_lock(booking.cluster_id)
+    token = await acquire_hostel_lock(hostel_id)
     if not token:
         return {
             "success": False,
-            "message": "Your room is already booked; another allocation is in progress, please retry in a moment.",
+            "message": "Allocation for your hostel is busy processing another payment right now - please retry in a moment.",
         }
     try:
-        room_ids = booking.room_ids.split(",")
-        for room_id in room_ids:
-            room = await db.get(Room, room_id)
-            if room and room.occupied_count < room.capacity:
-                room.occupied_count += 1
-                await db.commit()
-                return {
-                    "success": True,
-                    "cluster_id": booking.cluster_id,
-                    "room_ids": [room.id],
-                    "message": "Added to your group's already-allotted room.",
-                }
-        return {
-            "success": True,
-            "cluster_id": booking.cluster_id,
-            "room_ids": room_ids,
-            "message": "Your group's room is already fully booked; payment recorded, contact admin if a seat is missing.",
-        }
+        result = await handle_group_payment_paid(db, payment_id)
+        return _result_to_dict(result)
     finally:
-        await release_cluster_lock(booking.cluster_id, token)
-
-
-async def compute_precise_seats_added(group_size: int, room_label: str, room_before: int) -> int:
-    """
-    Precise seat delta logic (used instead of the rough heuristic above where needed):
-    - Group of 4: room A and room B each +2 (both start at 0).
-    - Group of 3: room A +2 (leader's room, starts at 0); room B +1 (either
-      completes an existing single to 2, or opens 1 seat from 0 -> 1).
-    - Group of 2: room A +2.
-    - Single (1): whichever room had exactly 1 occupant gets +1 (now 2/2 full).
-    """
-    if group_size == 4:
-        return 2
-    if group_size == 3:
-        return 2 if room_label == "A" else 1
-    if group_size == 2:
-        return 2
-    if group_size == 1:
-        return 1
-    return 0
+        await release_hostel_lock(hostel_id, token)

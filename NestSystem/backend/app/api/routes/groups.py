@@ -55,6 +55,39 @@ async def join_group(payload: GroupJoinRequest, current_user: User = Depends(get
     if len(members) >= group.size_limit:
         raise HTTPException(status_code=400, detail="Group is already full (max 4 members)")
 
+    # Gender check: a hostel-bound group can only ever contain members of
+    # one gender (hostels themselves are gendered), so catch a mismatch
+    # here rather than downstream.
+    if members and members[0].gender != current_user.gender:
+        raise HTTPException(status_code=400, detail="This group's members are a different gender - hostels are gender-specific.")
+
+    # Same-hostel guard: if hostel pre-allocation has already run for this
+    # group (any existing member has an assigned_hostel_id) or for the
+    # joining student themself, their hostels must match. Without this,
+    # a group could quietly end up with members split across two hostels,
+    # which room allocation can't resolve (see allocation_service.py's
+    # mismatched-hostel guard, which exists as a defensive backstop - this
+    # check is what should actually prevent it from happening at all).
+    existing_group_hostel_ids = {m.assigned_hostel_id for m in members if m.assigned_hostel_id}
+    if existing_group_hostel_ids and current_user.assigned_hostel_id:
+        if current_user.assigned_hostel_id not in existing_group_hostel_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="You were pre-allocated to a different hostel than this group's members - you can't join.",
+            )
+    elif existing_group_hostel_ids and not current_user.assigned_hostel_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This group's members already have a hostel assigned, but you don't have one yet - "
+                   "hostel allocation must place you in the same hostel first.",
+        )
+    elif current_user.assigned_hostel_id and not existing_group_hostel_ids and members:
+        raise HTTPException(
+            status_code=400,
+            detail="You already have a hostel assigned, but this group's members don't yet - "
+                   "wait until hostel allocation has run for everyone.",
+        )
+
     current_user.group_id = group.id
     await db.commit()
 

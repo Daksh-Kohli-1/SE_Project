@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +9,9 @@ from app.core.database import get_db
 from app.models.models import User, Hostel, Floor, Cluster, Room, HostelPreference
 from app.schemas.schemas import AllocationSettingsOut, AllocationSettingsUpdate, HostelAllocationRunResult
 from app.api.deps import get_current_admin, get_current_user, get_or_create_settings, is_allotment_window_open
-from app.algorithms.hostel_allocation import run_hostel_allocation, StudentInput, HostelInput
+from app.algorithms.hostel_allocation import (
+    run_hostel_allocation_for_students, StudentInput, HostelInput,
+)
 
 router = APIRouter(tags=["settings"])
 
@@ -63,6 +67,10 @@ async def run_hostel_allocation_pass(
     Runs the gender + CGPA based hostel pre-allocation for every student who
     doesn't already have an assigned hostel (pass reset=true to wipe all
     existing assignments first and re-run everyone).
+
+    NOTE: this route treats every student as a solo unit, so locked groups
+    are not kept together. To keep groups together, call
+    run_and_persist_hostel_allocation(db) from the algorithm module instead.
     """
     if reset:
         await db.execute(User.__table__.update().where(User.role == "student").values(assigned_hostel_id=None))
@@ -90,7 +98,11 @@ async def run_hostel_allocation_pass(
     students = students_result.scalars().all()
 
     prefs_result = await db.execute(select(HostelPreference))
-    prefs_by_user = {p.user_id: p.hostel_ids_csv.split(",") for p in prefs_result.scalars().all()}
+    prefs_by_user = {
+        p.user_id: [h for h in p.hostel_ids_csv.split(",") if h]
+        for p in prefs_result.scalars().all()
+        if p.user_id
+    }
 
     # Reduce remaining capacity by whoever's already assigned (from a prior,
     # non-reset run) so a partial re-run doesn't overbook a hostel.
@@ -111,7 +123,7 @@ async def run_hostel_allocation_pass(
         for s in students
     ]
 
-    result = run_hostel_allocation(student_inputs, hostel_inputs)
+    result = run_hostel_allocation_for_students(student_inputs, hostel_inputs)
 
     for student in students:
         hostel_id = result.assignments.get(student.id)
@@ -120,7 +132,6 @@ async def run_hostel_allocation_pass(
 
     settings_row = await get_or_create_settings(db)
     settings_row.hostel_allocation_run = True
-    from datetime import datetime, timezone
     settings_row.hostel_allocation_run_at = datetime.now(timezone.utc)
 
     await db.commit()

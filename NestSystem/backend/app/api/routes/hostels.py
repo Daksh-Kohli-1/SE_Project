@@ -1,10 +1,13 @@
+import random
+import string
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models.models import Hostel, Floor, Cluster, Room, User, RoleEnum, HostelPreference
+from app.models.models import Hostel, Floor, Cluster, Room, User, RoleEnum, HostelPreference, Group, GroupStatus
 from app.schemas.schemas import (
     HostelOut, FloorOut, ClusterOut, RoomOut, HostelSummaryOut,
     HostelPreferenceSubmitRequest, HostelAssignmentOut,
@@ -12,6 +15,10 @@ from app.schemas.schemas import (
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/hostels", tags=["hostels"])
+
+
+def _gen_code(length: int = 6) -> str:
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
 def _cluster_state_label(rooms: list[Room]) -> str:
@@ -119,6 +126,15 @@ async def submit_hostel_preferences(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Hostel preferences are ranked ONCE PER GROUP, not per student: the
+    group's LEADER chooses the ranking and every member inherits it - this
+    is what feeds the CGPA-based hostel pre-allocation pass as a single
+    unit (average CGPA across the whole group). A student who hasn't
+    joined/created a group yet is simply a group of one (auto-created here,
+    same pattern as booking.py/payments.py), so solo bookers go through the
+    exact same code path.
+    """
     if current_user.role != RoleEnum.student:
         raise HTTPException(status_code=403, detail="Only students submit hostel preferences")
     if current_user.assigned_hostel_id:
@@ -132,16 +148,45 @@ async def submit_hostel_preferences(
         if hostel_id not in valid_ids:
             raise HTTPException(status_code=400, detail="Invalid hostel selected for your gender.")
 
+    # Auto-create a solo group if the student hasn't set one up yet - a solo
+    # booker is just a group of one, all the way through.
+    if not current_user.group_id:
+        code = _gen_code()
+        while (await db.execute(select(Group).where(Group.code == code))).scalar_one_or_none():
+            code = _gen_code()
+        group = Group(code=code, leader_id=current_user.id, status=GroupStatus.forming)
+        db.add(group)
+        await db.flush()
+        current_user.group_id = group.id
+        await db.commit()
+
+    group = await db.get(Group, current_user.group_id)
+    if group.leader_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the group leader can submit hostel preferences")
+
+    # Block re-submission once ANY member of the group already has a hostel
+    # assigned (covers a leader trying to resubmit after allocation ran,
+    # even though the earlier check only looked at the leader themself).
+    members_result = await db.execute(select(User).where(User.group_id == group.id))
+    members = members_result.scalars().all()
+    if any(m.assigned_hostel_id for m in members):
+        raise HTTPException(status_code=400, detail="Hostel allocation has already run for this group - preferences are locked.")
+
     existing = (
-        await db.execute(select(HostelPreference).where(HostelPreference.user_id == current_user.id))
+        await db.execute(select(HostelPreference).where(HostelPreference.group_id == group.id))
     ).scalar_one_or_none()
 
     if existing:
         existing.hostel_ids_csv = ",".join(payload.hostel_ids)
     else:
-        db.add(HostelPreference(user_id=current_user.id, hostel_ids_csv=",".join(payload.hostel_ids)))
+        db.add(HostelPreference(group_id=group.id, hostel_ids_csv=",".join(payload.hostel_ids)))
     await db.commit()
-    return {"message": "Hostel preferences saved."}
+    return {
+        "message": "Hostel preferences saved for your group.",
+        "group_code": group.code,
+        "note": "Every current and future member of this group inherits this ranking - "
+                "only the leader can change it.",
+    }
 
 
 @router.get("/my-assignment", response_model=HostelAssignmentOut)

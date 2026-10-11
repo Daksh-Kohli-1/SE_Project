@@ -42,6 +42,19 @@ class PaymentStatus(str, enum.Enum):
     failed = "failed"
 
 
+class AllocationJobStatus(str, enum.Enum):
+    queued = "queued"
+    processing = "processing"
+    done = "done"
+    failed = "failed"
+
+
+class MealType(str, enum.Enum):
+    breakfast = "breakfast"
+    lunch = "lunch"
+    dinner = "dinner"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -89,9 +102,22 @@ class Group(Base):
     booking_ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # FCFS timestamp
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # --- Hostel pre-allocation snapshot (added) ---
+    # Set once the CGPA-based hostel pre-allocation pass places this group's
+    # unit as a single block. If the group couldn't fit anywhere as one
+    # block and had to be exploded into per-student singles
+    # (retry_unassigned_as_singles), assigned_hostel_id stays None here and
+    # hostel_split_to_singles is True - each member's own
+    # User.assigned_hostel_id is authoritative instead (and may differ
+    # member-to-member in rare cases).
+    assigned_hostel_id: Mapped[str | None] = mapped_column(String, ForeignKey("hostels.id"), nullable=True)
+    hostel_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hostel_split_to_singles: Mapped[bool] = mapped_column(Boolean, default=False)
+
     members: Mapped[list["User"]] = relationship("User", back_populates="group", foreign_keys=[User.group_id])
     preferences: Mapped[list["Preference"]] = relationship("Preference", back_populates="group", cascade="all, delete-orphan")
-    booking: Mapped["Booking"] = relationship("Booking", back_populates="group", uselist=False)
+    # A group may now have MORE THAN ONE booking row - see Booking below for why.
+    bookings: Mapped[list["Booking"]] = relationship("Booking", back_populates="group", cascade="all, delete-orphan")
 
 
 class Hostel(Base):
@@ -162,17 +188,34 @@ class Preference(Base):
 
 
 class Booking(Base):
+    """
+    One row per contiguous seat-reservation made for a group.
+
+    Almost always a group has exactly ONE booking row (the whole group
+    landed together in one cluster - either a full empty-cluster lock, or
+    a whole-group partial fit). group_id is therefore no longer UNIQUE:
+    when a group can't be kept together and gets chunk-split (e.g. a
+    4-member group placed as 2+2 on the same floor) or, as a last resort,
+    exploded into pure singles, each chunk/single gets its own Booking row
+    so its cluster/room/member-list is tracked independently.
+
+    member_ids_csv records exactly which of the group's students occupy
+    the seats in THIS row, which is how `retry_unplaced_group_members`
+    knows who still has no seat at all when a group is left partially
+    unplaced.
+    """
     __tablename__ = "bookings"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
-    group_id: Mapped[str] = mapped_column(String, ForeignKey("groups.id"), unique=True)
+    group_id: Mapped[str] = mapped_column(String, ForeignKey("groups.id"))
     cluster_id: Mapped[str] = mapped_column(String, ForeignKey("clusters.id"))
-    room_ids: Mapped[str] = mapped_column(String)  # comma-separated room ids allotted
+    room_ids: Mapped[str] = mapped_column(String)          # comma-separated room ids allotted in this row
+    member_ids_csv: Mapped[str] = mapped_column(String(500), default="")  # comma-separated student ids seated by this row
     status: Mapped[BookingStatus] = mapped_column(Enum(BookingStatus), default=BookingStatus.reserved)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    group: Mapped["Group"] = relationship("Group", back_populates="booking")
+    group: Mapped["Group"] = relationship("Group", back_populates="bookings")
     cluster: Mapped["Cluster"] = relationship("Cluster")
 
 
@@ -271,34 +314,69 @@ class AmenityBooking(Base):
 
 
 class HostelPreference(Base):
-    """A student's ranked list of hostels (within their own gender), used as
+    """
+    A UNIT's ranked list of hostels (within their own gender), used as
     input to the CGPA-based serial-dictatorship hostel pre-allocation run.
-    This happens BEFORE room/cluster preferences (Preference model)."""
+    This happens BEFORE room/cluster preferences (Preference model).
 
+    Submitted once per unit - either a group (once it exists, submitted by
+    the leader on behalf of all members) or a solo student acting as their
+    own unit-of-one. Exactly one of user_id / group_id is set.
+    """
     __tablename__ = "hostel_preferences"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), unique=True)
-    hostel_ids_csv: Mapped[str] = mapped_column(String(500))  # ranked, comma-separated hostel ids
+    user_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    group_id: Mapped[str | None] = mapped_column(String, ForeignKey("groups.id"), nullable=True)
+    # ranked, comma-separated hostel ids, most preferred first
+    hostel_ids_csv: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_hostelpref_user"),
+        UniqueConstraint("group_id", name="uq_hostelpref_group"),
+    )
+
+
+class AllocationJob(Base):
+    """One row per payment that needs a room-allotment attempt. Not wired
+    into the live handle_group_payment_paid() path yet (that runs inline,
+    synchronously, inside the caller's Redis-locked section) - this table
+    is here so a future move to an async worker queue (Celery/RQ) doesn't
+    require a schema change, just a change in how rows get consumed."""
+
+    __tablename__ = "allocation_jobs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    group_id: Mapped[str | None] = mapped_column(String, ForeignKey("groups.id"), nullable=True)
+    student_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    payment_id: Mapped[str] = mapped_column(String, ForeignKey("payments.id"))
+    status: Mapped["AllocationJobStatus"] = mapped_column(Enum(AllocationJobStatus), default=AllocationJobStatus.queued)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AllocationSettings(Base):
     """Singleton row (id is always 'singleton') holding admin-controlled
     scheduling for the whole allocation process:
       - hostel pre-allocation (gender + CGPA based)
-      - the single "billing day" room-allotment/payment window
+      - the single "billing day" room-allotment/payment window (both
+        allotment and payment share this ONE window - there is no
+        separate post-window allotment phase)
     """
 
     __tablename__ = "allocation_settings"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
 
-    # ---- Room allotment ("billing day") window ----
-    # Allotment/payment/room-preference submission is only permitted on this
-    # date, between start_time and end_time (server local time), unless
-    # manual_override_open forces it open regardless of date/time.
+    # ---- Room allotment + payment ("billing day") window ----
+    # Room-preference submission, payment, and live room allotment are all
+    # only permitted on this date, between start_time and end_time (server
+    # local time), unless manual_override_open forces it open regardless
+    # of date/time.
     allotment_date: Mapped[str | None] = mapped_column(String(20), nullable=True)   # "YYYY-MM-DD"
     window_start_time: Mapped[str] = mapped_column(String(5), default="09:00")       # "HH:MM"
     window_end_time: Mapped[str] = mapped_column(String(5), default="18:00")         # "HH:MM"
@@ -309,6 +387,13 @@ class AllocationSettings(Base):
     hostel_allocation_run: Mapped[bool] = mapped_column(Boolean, default=False)
     hostel_allocation_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hostel_preferences_open: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # ---- Hostel preference window (symmetric with the billing-day window) ----
+    hostel_pref_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    hostel_pref_start_time: Mapped[str] = mapped_column(String(5), default="09:00")
+    hostel_pref_end_time: Mapped[str] = mapped_column(String(5), default="18:00")
+    hostel_pref_manual_override_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    hostel_pref_manual_override_closed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -323,11 +408,6 @@ class Notification(Base):
     category: Mapped[str] = mapped_column(String(30), default="General")  # Payment, Notice, Maintenance, Leave, System
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-class MealType(str, enum.Enum):
-    breakfast = "breakfast"
-    lunch = "lunch"
-    dinner = "dinner"
 
 
 class MessMenu(Base):
