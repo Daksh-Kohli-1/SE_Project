@@ -5,6 +5,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import { useHostelAssignment } from "../../lib/useHostelAssignment";
+import HostelGate from "../../components/HostelGate";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -16,6 +18,7 @@ function formatWindowTime(hhmm: string): string {
 }
 
 export default function MessCommunityPage() {
+  const gate = useHostelAssignment();
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -48,15 +51,17 @@ export default function MessCommunityPage() {
   }
 
   useEffect(() => {
+    if (!gate.allotted) return; // mess data only exists for allotted students
     loadTodayMenu();
-  }, []);
+  }, [gate.allotted]);
 
   useEffect(() => {
+    if (!gate.allotted) return;
     loadPoll(activeMeal);
     // live-ish refresh while this tab is open
     const interval = setInterval(() => loadPoll(activeMeal), 8000);
     return () => clearInterval(interval);
-  }, [activeMeal]);
+  }, [activeMeal, gate.allotted]);
 
   async function submitFeedback(e: React.FormEvent) {
     e.preventDefault();
@@ -94,6 +99,13 @@ export default function MessCommunityPage() {
     <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/mess" />
 
+      {gate.loading && <p className="text-xs text-white/50 text-center mt-16">Loading…</p>}
+
+      {!gate.loading && !gate.allotted && (
+        <HostelGate what="Mess & Community" windowState={gate.windowState} />
+      )}
+
+      {!gate.loading && gate.allotted && (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* Header */}
         <motion.div
@@ -430,6 +442,7 @@ export default function MessCommunityPage() {
           </div>
         </motion.div>
       </div>
+      )}
     </main>
   );
 }

@@ -24,6 +24,14 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [hostelName, setHostelName] = useState<string | null>(null);
+  const [seat, setSeat] = useState<any>(null);
+
+  useEffect(() => {
+    // Real allotment data (not whatever happens to be cached on the user object)
+    api.get("/api/hostels/my-assignment").then((r) => setHostelName(r.data?.assigned_hostel_name ?? null)).catch(() => {});
+    api.get("/api/booking/my-seat").then((r) => setSeat(r.data)).catch(() => setSeat(null));
+  }, []);
 
   useEffect(() => {
     api
@@ -97,8 +105,8 @@ export default function ProfilePage() {
                 <ReadRow label="Section" value={user.section} />
                 <ReadRow label="Year" value={user.year} />
                 <ReadRow label="CGPA" value={user.cgpa} />
-                <ReadRow label="Hostel" value={user.hostel_name} />
-                <ReadRow label="Room" value={user.room_no} />
+                <ReadRow label="Hostel" value={hostelName ?? "Not allotted yet"} />
+                <ReadRow label="Room" value={seat?.allocated ? seat.room_numbers?.join(" / ") : "Not allotted yet"} />
               </dl>
               <p className="text-[10px] text-white/40 mt-4">
                 Academic details are managed by administration and can't be edited here.

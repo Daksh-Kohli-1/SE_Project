@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
@@ -12,9 +13,7 @@ export default function GroupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [roomPref, setRoomPref] = useState("2-seater");
-  const [specialReq, setSpecialReq] = useState("");
-  const [prefSaved, setPrefSaved] = useState(false);
+  const [hostelStatus, setHostelStatus] = useState<any>(null);
 
   async function refresh() {
     try {
@@ -30,6 +29,13 @@ export default function GroupPage() {
     } catch {
       // No group yet (404) — this is the normal, expected state for a new user.
       setGroup(null);
+    }
+
+    try {
+      const hRes = await api.get("/api/hostels/preference-status");
+      setHostelStatus(hRes.data);
+    } catch {
+      setHostelStatus(null);
     }
   }
 
@@ -85,16 +91,6 @@ export default function GroupPage() {
     }
   }
 
-  function saveGroupPreferences() {
-    // NOTE: there is currently no backend field/endpoint for room-type
-    // preference or special location requests — this only affects what's
-    // shown in this browser tab right now and is not sent anywhere or
-    // used by the allocation algorithm. Wire up a real endpoint before
-    // relying on this for anything.
-    setPrefSaved(true);
-    setTimeout(() => setPrefSaved(false), 3000);
-  }
-
   const fadeUp = {
     hidden: { opacity: 0, y: 16 },
     show: (i: number = 0) => ({
@@ -115,7 +111,7 @@ export default function GroupPage() {
             Your group
           </h1>
           <p className="text-white/60 text-sm sm:text-base">
-            Team up with friends (1–4 members) or go solo. Group leaders rank preferred clusters on behalf of the team.
+            Team up with friends (1–4 members) or go solo. The group leader ranks preferred hostels on behalf of the whole team — allotment is by the group&apos;s average CGPA.
           </p>
         </motion.div>
 
@@ -313,7 +309,7 @@ export default function GroupPage() {
               )}
             </motion.div>
 
-            {/* Group Preferences Card */}
+            {/* Hostel preference card */}
             <motion.div
               initial="hidden"
               animate="show"
@@ -321,66 +317,40 @@ export default function GroupPage() {
               variants={fadeUp}
               className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6"
             >
-              <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
-                ⚙️ Group Preferences & Special Requests
-              </h3>
-              <p className="text-[10px] text-orange-400 font-semibold mb-4">
-                Not yet connected to the backend — cluster rankings on the Clusters page are what actually drive
-                room allotment. This section is a placeholder until a real endpoint exists for it.
-              </p>
+              <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">🏠 Hostel preference</h3>
 
-              <div className="grid sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs font-bold text-white/60 mb-1">Room Type Preference</label>
-                  <select
-                    value={roomPref}
-                    onChange={(e) => setRoomPref(e.target.value)}
-                    className="w-full border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white bg-[#151517] focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="2-seater">2-Seater Connected Room (Standard Cluster)</option>
-                    <option value="1-seater">Single Seater Occupancy</option>
-                    <option value="4-seater">Full 4-Seater Cluster (Entire Block)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-white/60 mb-1">Special Location Request</label>
-                  <input
-                    type="text"
-                    value={specialReq}
-                    onChange={(e) => setSpecialReq(e.target.value)}
-                    placeholder="e.g. Near academic block, ground floor"
-                    className="w-full border border-white/15 bg-white/[0.03] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/50">
-                  Use the Clusters page to actually rank preferences for allocation.
-                </span>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={saveGroupPreferences}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors"
-                >
-                  Save Locally
-                </motion.button>
-              </div>
-
-              <AnimatePresence>
-                {prefSaved && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="text-xs font-bold text-green-400 mt-2"
-                  >
-                    ✓ Saved in this browser tab only (not sent to the server).
-                  </motion.p>
-                )}
-              </AnimatePresence>
+              {hostelStatus?.assigned_hostel_id ? (
+                <p className="text-sm text-white/70 mt-2">
+                  Your group was allotted{" "}
+                  <span className="font-semibold text-green-400">{hostelStatus.assigned_hostel_name}</span>.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-white/60 mb-4">
+                    {hostelStatus?.window?.state === "open"
+                      ? "Hostel selection is open."
+                      : hostelStatus?.window?.state === "not_started"
+                      ? "Hostel selection hasn't opened yet."
+                      : "Hostel selection is closed — group changes are frozen until allotment is done."}{" "}
+                    {hostelStatus?.ranking?.length
+                      ? `Your group has ranked ${hostelStatus.ranking.length} hostels.`
+                      : "No hostels ranked yet."}
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-white/50">
+                      {hostelStatus?.is_leader
+                        ? "As group leader, you choose the ranking for everyone."
+                        : "Only the group leader can choose hostels."}
+                    </span>
+                    <Link
+                      href="/hostels"
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-full shadow-sm transition-colors"
+                    >
+                      {hostelStatus?.is_leader ? "Choose hostels" : "View ranking"}
+                    </Link>
+                  </div>
+                </>
+              )}
             </motion.div>
           </div>
         )}

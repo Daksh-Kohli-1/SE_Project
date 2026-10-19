@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import { useHostelAssignment } from "../../lib/useHostelAssignment";
+import HostelGate from "../../components/HostelGate";
 
 /* ------------------------------------------------------------------ */
 /*  FLOOR PLAN LAYOUT                                                  */
@@ -93,7 +95,8 @@ const box = (x: number, y: number, w: number, h: number): React.CSSProperties =>
 export default function ClustersPage() {
   const [hostels, setHostels] = useState<any[]>([]);
   const [activeHostel, setActiveHostel] = useState(0);
-  const [activeFloor, setActiveFloor] = useState(2); // Floor 3 default for Avleen (0-indexed 2)
+  const [activeFloor, setActiveFloor] = useState(0);
+  const gate = useHostelAssignment();
   const [selected, setSelected] = useState<string[]>([]); // ranked cluster ids
   const [selectedRoom, setSelectedRoom] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
@@ -113,15 +116,14 @@ export default function ClustersPage() {
   const moved = useRef(false);
 
   useEffect(() => {
+    if (!gate.allotted) return; // no hostel -> no map, nothing to fetch
     api.get("/api/hostels").then((r) => {
       setHostels(r.data);
-      // Auto-select Girls hostel if found
-      const girlsIdx = r.data.findIndex((h: any) => h.gender === "female");
-      if (girlsIdx !== -1) setActiveHostel(girlsIdx);
+      setActiveHostel(0); // the backend only returns the student's own allotted hostel
     }).catch(() => {});
 
     api.get("/api/groups/me").then((r) => setGroup(r.data)).catch(() => setGroup(null));
-  }, []);
+  }, [gate.allotted]);
 
   const hostel = hostels[activeHostel];
   const floor = hostel?.floors?.[activeFloor];
@@ -285,6 +287,13 @@ export default function ClustersPage() {
     <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/clusters" />
 
+      {gate.loading && <p className="text-xs text-white/50 text-center mt-16">Loading…</p>}
+
+      {!gate.loading && !gate.allotted && (
+        <HostelGate what="The cluster map" windowState={gate.windowState} />
+      )}
+
+      {!gate.loading && gate.allotted && (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* Header Section */}
         <motion.div
@@ -295,7 +304,7 @@ export default function ClustersPage() {
         >
           <div>
             <h1 className="text-3xl sm:text-4xl font-semibold text-white mb-1">
-              Cluster map
+              Cluster map{gate.hostelName ? ` — ${gate.hostelName}` : ""}
             </h1>
             <p className="text-white/60 text-sm sm:text-base">
               Browse hostel floors, check availability, inspect room amenities, and rank your preferred clusters.
@@ -350,7 +359,7 @@ export default function ClustersPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-white">
-                    {hostel?.name || "Thapar Hostel"} — Floor {floor?.floor_number || 3} Plan
+                    {hostel?.name || "Thapar Hostel"} — Floor {floor?.floor_number ?? 1} Plan
                   </h3>
                   <p className="text-xs text-white/50">
                     Drag to move, scroll / pinch / buttons to zoom. Tap the badge on a cluster to rank it (pick 3 to 5). Tap a room to inspect it.
@@ -742,6 +751,7 @@ export default function ClustersPage() {
           </div>
         </div>
       </div>
+      )}
     </main>
   );
 }

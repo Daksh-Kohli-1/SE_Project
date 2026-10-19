@@ -59,6 +59,15 @@ async def pay_fee(
     to be in a multi-member group to pay - a solo group is created on the
     fly if the student hasn't joined/created one yet.
     """
+    # No hostel, no fee: the room engine seats people inside THEIR allotted hostel,
+    # so taking money before hostel allotment would leave a paid student with no
+    # way to ever get a room.
+    if not current_user.assigned_hostel_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You haven't been allotted a hostel yet. Fee payment opens after hostel allotment.",
+        )
+
     # Auto-create a solo group if the student hasn't set one up yet.
     if not current_user.group_id:
         group = Group(code=_gen_group_code(), leader_id=current_user.id, status=GroupStatus.forming)

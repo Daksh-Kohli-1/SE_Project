@@ -21,6 +21,13 @@ from app.services import mess_poll_service
 router = APIRouter(prefix="/api/services", tags=["services"])
 
 
+def _require_hostel(user: User) -> None:
+    """Mess menu, feedback and polls belong to a specific hostel's mess, so they
+    only exist for students who have actually been allotted a hostel."""
+    if not user.assigned_hostel_id:
+        raise HTTPException(status_code=403, detail="Hostel not allotted yet")
+
+
 # ---------- Profile ----------
 @router.put("/profile", response_model=UserOut)
 async def update_profile(
@@ -102,6 +109,7 @@ async def post_mess_feedback(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    _require_hostel(current_user)
     fb = MessFeedback(
         user_id=current_user.id,
         rating=payload.rating,
@@ -317,6 +325,7 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 # ---------- Weekly Mess Menu (student, read-only) ----------
 @router.get("/mess/menu/today", response_model=DayMenuOut)
 async def get_today_menu(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _require_hostel(current_user)
     dow = dt.now().weekday()
     result = await db.execute(select(MessMenu).where(MessMenu.day_of_week == dow))
     rows = {r.meal_type.value: (r.items.split(",") if r.items else []) for r in result.scalars().all()}
@@ -331,6 +340,7 @@ async def get_today_menu(db: AsyncSession = Depends(get_db), current_user: User 
 
 @router.get("/mess/menu/week", response_model=list[DayMenuOut])
 async def get_week_menu(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _require_hostel(current_user)
     result = await db.execute(select(MessMenu))
     week = {i: {"breakfast": [], "lunch": [], "dinner": []} for i in range(7)}
     for r in result.scalars().all():
@@ -344,6 +354,7 @@ async def vote_live_poll(
     payload: LivePollVoteRequest,
     current_user: User = Depends(get_current_user),
 ):
+    _require_hostel(current_user)
     if payload.meal_type not in ("breakfast", "lunch", "dinner"):
         raise HTTPException(status_code=400, detail="Invalid meal type")
 
@@ -368,6 +379,7 @@ async def live_poll_results(
     meal_type: str,
     current_user: User = Depends(get_current_user),
 ):
+    _require_hostel(current_user)
     if meal_type not in ("breakfast", "lunch", "dinner"):
         raise HTTPException(status_code=400, detail="Invalid meal type")
     today = date_cls.today().isoformat()

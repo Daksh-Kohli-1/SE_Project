@@ -6,42 +6,54 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
-import BookingProgress from "@/components/BookingProgress";
+import { useHostelAssignment } from "../../lib/useHostelAssignment";
+
 
 export default function Dashboard() {
   const router = useRouter();
+  const gate = useHostelAssignment();
   const [user, setUser] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
-  const [booking, setBooking] = useState<any>(null);
+  const [seat, setSeat] = useState<any>(null);
+  const [hostelStatus, setHostelStatus] = useState<any>(null);
   const [paymentStatus, setPaymentStatus] = useState<string>("pending");
+  const [todayMenu, setTodayMenu] = useState<any>(null);
+  const [notices, setNotices] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
   const [showSosModal, setShowSosModal] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [sosLoading, setSosLoading] = useState(false);
 
   useEffect(() => {
     api.get("/api/auth/me")
-      .then((r) => setUser(r.data))
+      .then((r) => {
+        setUser(r.data);
+        // match on the id of the logged-in user (never on a name)
+        api.get("/api/payments/status")
+          .then((p) => {
+            const mine = p.data.find((x: any) => x.user_id === r.data.id);
+            setPaymentStatus(mine?.status ?? "pending");
+          })
+          .catch(() => setPaymentStatus("pending"));
+      })
       .catch(() => {
         if (typeof window !== "undefined") {
           router.push("/login");
         }
       });
 
-    api.get("/api/groups/me")
-      .then((r) => setGroup(r.data))
-      .catch(() => setGroup(null));
-
-    api.get("/api/booking/status")
-      .then((r) => setBooking(r.data))
-      .catch(() => setBooking(null));
-
-    api.get("/api/payments/status")
-      .then((r) => {
-        const myPay = r.data.find((p: any) => p.name.includes("Avleen") || p.user_id === user?.id);
-        if (myPay) setPaymentStatus(myPay.status);
-      })
-      .catch(() => setPaymentStatus("pending"));
+    api.get("/api/groups/me").then((r) => setGroup(r.data)).catch(() => setGroup(null));
+    api.get("/api/booking/my-seat").then((r) => setSeat(r.data)).catch(() => setSeat(null));
+    api.get("/api/hostels/preference-status").then((r) => setHostelStatus(r.data)).catch(() => setHostelStatus(null));
+    api.get("/api/services/notifications").then((r) => setNotices(r.data || [])).catch(() => setNotices([]));
+    api.get("/api/services/requests").then((r) => setRequests(r.data || [])).catch(() => setRequests([]));
   }, []);
+
+  // Mess menu belongs to the allotted hostel - don't even ask before allotment.
+  useEffect(() => {
+    if (!gate.allotted) return;
+    api.get("/api/services/mess/menu/today").then((r) => setTodayMenu(r.data)).catch(() => setTodayMenu(null));
+  }, [gate.allotted]);
 
   async function triggerEmergencyAlert() {
     setSosLoading(true);
@@ -57,11 +69,40 @@ export default function Dashboard() {
     }
   }
 
-  // Determine current stage for booking progress
-  let currentStage: 1 | 2 | 3 | 4 = 1;
-  if (group) currentStage = 2;
-  if (group?.status === "prefs_submitted" || booking) currentStage = 3;
-  if (booking && paymentStatus === "paid") currentStage = 4;
+  // ---- everything below is derived from REAL data only ----
+  const seated = !!seat?.allocated;
+  const paid = gate.allotted && paymentStatus === "paid";
+  const hasRanking = (hostelStatus?.ranking?.length ?? 0) > 0;
+  const roomText = seated ? (seat.room_numbers || []).join(" / ") : "";
+  const locationText = seated
+    ? `Room ${roomText}, ${seat.hostel_name}`
+    : gate.hostelName
+    ? `${gate.hostelName} (room not allotted yet)`
+    : "hostel not allotted yet";
+
+  const stages = [
+    { label: "Group formation", sub: "Solo or 2–4 team", done: !!group || hasRanking || gate.allotted },
+    { label: "Hostel preference", sub: "Rank hostels", done: hasRanking || gate.allotted },
+    { label: "Hostel allotment", sub: "By CGPA", done: gate.allotted },
+    { label: "Fee payment", sub: "₹60,000 fee", done: paid },
+    { label: "Room allotment", sub: "Cluster & room", done: seated },
+  ];
+
+  const windowMsg =
+    gate.windowState === "open"
+      ? "Hostel selection is open — rank your hostels."
+      : gate.windowState === "not_started"
+      ? "Hostel selection hasn't opened yet."
+      : gate.windowState === "closed"
+      ? "Selection closed — allotment coming soon."
+      : "Choose your hostel preferences first.";
+
+  const openRequests = requests.filter((r: any) => !["Completed", "Rejected"].includes(r.status));
+  const meals: { key: string; label: string; time: string; color: string }[] = [
+    { key: "breakfast", label: "Breakfast", time: "7:30 – 9:30 AM", color: "text-orange-400" },
+    { key: "lunch", label: "Lunch", time: "12:00 – 2:00 PM", color: "text-blue-300" },
+    { key: "dinner", label: "Dinner", time: "7:00 – 9:00 PM", color: "text-purple-300" },
+  ];
 
   const fadeUp = {
     hidden: { opacity: 0, y: 16 },
@@ -91,7 +132,7 @@ export default function Dashboard() {
                 <div>
                   <p className="font-bold text-red-400 text-sm">Emergency Alert Sent!</p>
                   <p className="text-xs text-white/60">
-                    Hostel Warden & Security have received your SOS with location Room {user?.room_no || "N/A"} ({user?.hostel_name || "Hostel"}).
+                    Hostel Warden & Security have received your SOS with location {locationText}.
                   </p>
                 </div>
               </div>
@@ -130,17 +171,15 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-[10px] uppercase font-bold tracking-wider text-white/50">Hostel & Room</p>
-                <p className="text-sm font-bold text-white">{user?.hostel_name || "Unassigned"}</p>
+                <p className="text-sm font-bold text-white">{gate.hostelName || "Not allotted"}</p>
               </div>
             </div>
             <div className="h-8 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-lg bg-green-500/10 text-green-400 font-bold text-xs">
-                Room {user?.room_no || "N/A"}
+              <span className={`px-3 py-1 rounded-lg font-bold text-xs ${seated ? "bg-green-500/10 text-green-400" : "bg-orange-500/10 text-orange-400"}`}>
+                {seated ? `Room ${roomText}` : "No room yet"}
               </span>
-              <span className="text-xs text-white/60 font-medium">
-                Allocated
-              </span>
+              <span className="text-xs text-white/60 font-medium">{seated ? "Allocated" : "Not allotted"}</span>
             </div>
           </div>
         </motion.div>
@@ -159,18 +198,35 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs uppercase font-bold tracking-wider text-white/50">Room Allocation</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                <span className={`w-2.5 h-2.5 rounded-full ${seated ? "bg-green-500 animate-pulse" : "bg-orange-400"}`} />
               </div>
-              <p className="text-2xl font-semibold text-green-400 mb-1">Allocated</p>
-              <p className="text-xs text-white/50 mb-4">
-                Room <strong className="text-white font-semibold">{user?.room_no || "N/A"}</strong>
-              </p>
+              {seated ? (
+                <>
+                  <p className="text-2xl font-semibold text-green-400 mb-1">Allocated</p>
+                  <p className="text-xs text-white/50 mb-4">
+                    Room <strong className="text-white font-semibold">{roomText}</strong> · Floor {seat.floor_number}
+                  </p>
+                </>
+              ) : !gate.allotted ? (
+                <>
+                  <p className="text-2xl font-semibold text-orange-400 mb-1">Hostel not allotted</p>
+                  <p className="text-xs text-white/50 mb-4">{windowMsg}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-semibold text-orange-400 mb-1">Not allotted yet</p>
+                  <p className="text-xs text-white/50 mb-4">
+                    {paid ? "Fee paid — no seat assigned yet." : "Rank clusters and pay the fee to get a room."}
+                  </p>
+                </>
+              )}
             </div>
             <Link
-              href="/clusters"
+              href={gate.allotted ? "/clusters" : "/hostels"}
               className="inline-flex items-center gap-1 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors group"
             >
-              View on map <span className="group-hover:translate-x-1 transition-transform">→</span>
+              {seated ? "View on map" : gate.allotted ? "Rank clusters" : "Choose hostels"}{" "}
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
             </Link>
           </motion.div>
 
@@ -186,20 +242,24 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs uppercase font-bold tracking-wider text-white/50">Fee Payment</span>
-                <span className={`w-2.5 h-2.5 rounded-full ${paymentStatus === "paid" ? "bg-green-500" : "bg-orange-400"}`} />
+                <span className={`w-2.5 h-2.5 rounded-full ${paid ? "bg-green-500" : "bg-orange-400"}`} />
               </div>
-              <p className={`text-2xl font-semibold mb-1 ${paymentStatus === "paid" ? "text-green-400" : "text-orange-400"}`}>
-                {paymentStatus === "paid" ? "Paid" : "Pending"}
+              <p className={`text-2xl font-semibold mb-1 ${paid ? "text-green-400" : "text-orange-400"}`}>
+                {!gate.allotted ? "Locked" : paid ? "Paid" : "Pending"}
               </p>
               <p className="text-xs text-white/50 mb-4">
-                Amount: <strong className="text-white font-semibold">₹60,000</strong>
+                {gate.allotted ? (
+                  <>Amount: <strong className="text-white font-semibold">₹60,000</strong></>
+                ) : (
+                  "Opens after hostel allotment"
+                )}
               </p>
             </div>
             <Link
-              href="/payment"
+              href={gate.allotted ? "/payment" : "/hostels"}
               className="inline-flex items-center gap-1 text-xs font-semibold text-orange-400 hover:text-orange-300 transition-colors group"
             >
-              {paymentStatus === "paid" ? "View receipt →" : "Pay now →"}
+              {!gate.allotted ? "Choose hostels →" : paid ? "View receipt →" : "Pay now →"}
             </Link>
           </motion.div>
 
@@ -247,7 +307,7 @@ export default function Dashboard() {
         </div>
 
         {/* Reusable Booking Progress Component */}
-        <BookingProgress currentStage={currentStage} />
+        <JourneyStepper stages={stages} />
 
         {/* Main Content Layout Grid */}
         <div className="grid lg:grid-cols-3 gap-8">
@@ -294,48 +354,34 @@ export default function Dashboard() {
                 </Link>
               </div>
 
-              <div className="grid sm:grid-cols-3 gap-4">
-                {/* Breakfast */}
-                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-orange-400">Breakfast</span>
-                    <span className="text-[10px] font-semibold text-white/40">7:30 – 9:30 AM</span>
-                  </div>
-                  <ul className="text-xs text-white/70 space-y-1">
-                    <li>• Poha</li>
-                    <li>• Boiled Eggs</li>
-                    <li>• Fresh Fruit</li>
-                    <li>• Tea / Coffee</li>
-                  </ul>
+              {!gate.allotted ? (
+                <div className="py-8 text-center text-xs text-white/50 bg-white/[0.02] rounded-xl border border-dashed border-white/15">
+                  Hostel not allotted yet — the mess menu appears once you've been allotted a hostel.
                 </div>
-
-                {/* Lunch */}
-                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10 ring-1 ring-blue-500/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-blue-300">Lunch</span>
-                    <span className="text-[10px] font-semibold text-white/40">12:00 – 2:00 PM</span>
-                  </div>
-                  <ul className="text-xs text-white/70 space-y-1">
-                    <li className="font-semibold text-white">• Rajma Chawal</li>
-                    <li>• Mixed Veg</li>
-                    <li>• Fresh Curd</li>
-                    <li>• Salad</li>
-                  </ul>
+              ) : (
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {meals.map((m) => {
+                    const items: string[] = todayMenu?.[m.key] || [];
+                    return (
+                      <div key={m.key} className="bg-white/[0.02] rounded-xl p-4 border border-white/10">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`font-bold text-xs uppercase tracking-wider ${m.color}`}>{m.label}</span>
+                          <span className="text-[10px] font-semibold text-white/40">{m.time}</span>
+                        </div>
+                        {items.length > 0 ? (
+                          <ul className="text-xs text-white/70 space-y-1">
+                            {items.map((it, i) => (
+                              <li key={i}>• {it}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-white/40">Menu not published yet.</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-
-                {/* Dinner */}
-                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-xs uppercase tracking-wider text-purple-300">Dinner</span>
-                    <span className="text-[10px] font-semibold text-white/40">7:00 – 9:00 PM</span>
-                  </div>
-                  <ul className="text-xs text-white/70 space-y-1">
-                    <li>• Paneer Curry</li>
-                    <li>• Butter Roti</li>
-                    <li>• Salad</li>
-                  </ul>
-                </div>
-              </div>
+              )}
             </motion.div>
 
             {/* Quick Action Grid */}
@@ -379,7 +425,14 @@ export default function Dashboard() {
                     <h4 className="font-bold text-sm text-white">Maintenance</h4>
                   </div>
                   <p className="text-xs text-white/50 mb-4">
-                    1 open request: <strong className="text-white">Room cleaning</strong>
+                    {openRequests.length === 0 ? (
+                      "No open requests."
+                    ) : (
+                      <>
+                        {openRequests.length} open request{openRequests.length === 1 ? "" : "s"}:{" "}
+                        <strong className="text-white">{openRequests[0].subject}</strong>
+                      </>
+                    )}
                   </p>
                 </div>
                 <Link
@@ -404,10 +457,13 @@ export default function Dashboard() {
                     <span className="text-base">📍</span>
                     <h4 className="font-bold text-sm text-white">Proof of Presence</h4>
                   </div>
-                  <p className="text-xs text-green-400 font-semibold mb-1">✓ Present in hostel</p>
-                  <p className="text-[10px] text-white/40 mb-4">Marked at 12:14 PM</p>
+                  {seated ? (
+                    <p className="text-xs text-white/60 mb-4">Presence tracking is active for {seat.hostel_name}.</p>
+                  ) : (
+                    <p className="text-xs text-white/50 mb-4">Available once you've been allotted a room.</p>
+                  )}
                 </div>
-                <span className="text-[10px] font-bold text-white/40">Automatic Geo Sync Active</span>
+                <span className="text-[10px] font-bold text-white/40">{seated ? "Automatic Geo Sync Active" : "Inactive"}</span>
               </motion.div>
             </div>
           </div>
@@ -433,41 +489,16 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-4">
-                {/* Notice 1 */}
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs">🛠️</span>
-                    <h4 className="text-xs font-bold text-white">Hostel Maintenance on Block B</h4>
+                {notices.slice(0, 3).map((n: any) => (
+                  <div key={n.id} className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
+                    <h4 className="text-xs font-bold text-white mb-1">{n.title}</h4>
+                    <p className="text-[11px] text-white/60 mb-2">{n.message}</p>
+                    {n.created_at && (
+                      <span className="text-[10px] text-white/40">{new Date(n.created_at).toLocaleString()}</span>
+                    )}
                   </div>
-                  <p className="text-[11px] text-white/60 mb-2">
-                    Elevator maintenance scheduled between 2:00 PM and 5:00 PM today.
-                  </p>
-                  <span className="text-[10px] text-white/40">Today, 09:30 AM</span>
-                </div>
-
-                {/* Notice 2 */}
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs">🥗</span>
-                    <h4 className="text-xs font-bold text-white">Mess Menu Updated</h4>
-                  </div>
-                  <p className="text-[11px] text-white/60 mb-2">
-                    Special dinner menu announced for upcoming Friday feast.
-                  </p>
-                  <span className="text-[10px] text-white/40">Yesterday, 04:15 PM</span>
-                </div>
-
-                {/* Notice 3 */}
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs">🇮🇳</span>
-                    <h4 className="text-xs font-bold text-white">Independence Day Holiday</h4>
-                  </div>
-                  <p className="text-[11px] text-white/60 mb-2">
-                    Campus entry/exit timing guidelines updated for holiday weekend.
-                  </p>
-                  <span className="text-[10px] text-white/40">02 Sep, 11:00 AM</span>
-                </div>
+                ))}
+                {notices.length === 0 && <p className="text-xs text-white/50">No notices right now.</p>}
               </div>
             </motion.div>
 
@@ -530,7 +561,7 @@ export default function Dashboard() {
                 Send Emergency Alert?
               </h3>
               <p className="text-xs text-white/60 text-center mb-6 leading-relaxed">
-                Are you sure you want to send an emergency alert? This will immediately dispatch campus security and notify the hostel warden of your location (Room {user?.room_no || "N/A"}, {user?.hostel_name || "Hostel"}).
+                Are you sure you want to send an emergency alert? This will immediately dispatch campus security and notify the hostel warden of your location ({locationText}).
               </p>
 
               <div className="flex gap-3">
@@ -554,5 +585,51 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function JourneyStepper({ stages }: { stages: { label: string; sub: string; done: boolean }[] }) {
+  const firstOpen = stages.findIndex((s) => !s.done);
+  const active = firstOpen === -1 ? stages.length : firstOpen; // stages.length => everything complete
+  const pct = stages.length > 1 ? (Math.min(active, stages.length - 1) / (stages.length - 1)) * 100 : 0;
+
+  return (
+    <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6 mb-8">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2">📌 Hostel Allotment Journey</h3>
+        <span className="text-xs font-bold text-blue-300 bg-blue-500/10 px-3 py-1 rounded-full">
+          {active >= stages.length ? "Complete" : `Stage ${active + 1} of ${stages.length}`}
+        </span>
+      </div>
+      <div className="relative">
+        <div className="absolute top-5 left-[10%] right-[10%] h-0.5 bg-white/10" />
+        <div className="absolute top-5 left-[10%] h-0.5 bg-blue-500 transition-all" style={{ width: `${pct * 0.8}%` }} />
+        <div className="relative grid" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+          {stages.map((st, i) => {
+            const isDone = st.done;
+            const isActive = i === active;
+            return (
+              <div key={st.label} className="flex flex-col items-center text-center px-1">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 ${
+                    isDone
+                      ? "bg-green-500 border-green-400 text-white"
+                      : isActive
+                      ? "bg-orange-500 border-orange-300 text-white shadow-[0_0_18px_-2px] shadow-orange-500/60"
+                      : "bg-[#151517] border-white/15 text-white/40"
+                  }`}
+                >
+                  {isDone ? "✓" : i + 1}
+                </div>
+                <p className={`mt-2 text-xs font-bold ${isDone ? "text-green-400" : isActive ? "text-orange-400" : "text-white/60"}`}>
+                  {st.label}
+                </p>
+                <p className="text-[10px] text-white/40">{st.sub}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }

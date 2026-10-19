@@ -5,6 +5,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import { useHostelAssignment } from "../../../lib/useHostelAssignment";
+import HostelGate from "../../../components/HostelGate";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -22,6 +24,7 @@ function formatWindowTime(hhmm: string): string {
 }
 
 export default function LiveMessPollPage() {
+  const gate = useHostelAssignment();
   const [results, setResults] = useState<Record<MealType, any>>({} as any);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -41,15 +44,23 @@ export default function LiveMessPollPage() {
   }
 
   useEffect(() => {
+    if (!gate.allotted) return;
     loadAll();
     const interval = setInterval(loadAll, 6000);
     return () => clearInterval(interval);
-  }, []);
+  }, [gate.allotted]);
 
   return (
     <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/mess" />
 
+      {gate.loading && <p className="text-xs text-white/50 text-center mt-16">Loading…</p>}
+
+      {!gate.loading && !gate.allotted && (
+        <HostelGate what="Live mess voting" windowState={gate.windowState} />
+      )}
+
+      {!gate.loading && gate.allotted && (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -148,6 +159,7 @@ export default function LiveMessPollPage() {
           </p>
         )}
       </div>
+      )}
     </main>
   );
 }

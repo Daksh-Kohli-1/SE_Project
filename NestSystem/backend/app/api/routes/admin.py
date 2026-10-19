@@ -1,132 +1,394 @@
+import re
+from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.models import (
-    Group, User, Booking, Payment, Cluster, Room, BookingStatus, GroupStatus, Hostel, Floor
+    Group, User, Booking, Payment, Cluster, Room, BookingStatus, GroupStatus, Hostel, Floor,
+    RoleEnum, GenderEnum,
 )
-from app.schemas.schemas import AdminReassignRequest, HostelAllocationRunResult
+from app.schemas.schemas import AdminReassignRequest
 from app.api.deps import get_current_admin, get_or_create_settings
-from app.algorithms.hostel_allocation import run_and_persist_hostel_allocation
+from app.algorithms.hostel_allocation import run_and_persist_hostel_allocation, hostel_demand_report
 from app.algorithms.allocation import retry_unplaced_group_members
+from app.services.hostel_window import describe_window, window_state
+from app.api.routes.testlab import router as testlab_router
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+router.include_router(testlab_router)  # /api/admin/test-lab/*
+
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+# ---------------------------------------------------------------------------
+# Overview
+# ---------------------------------------------------------------------------
+
+@router.get("/overview")
+async def system_overview(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Aggregated in SQL - with ~15k students and thousands of rooms, loading
+    the whole hostel tree into Python for a dashboard would be far too slow."""
+    room_row = (await db.execute(
+        select(func.count(Room.id), func.coalesce(func.sum(Room.capacity), 0), func.coalesce(func.sum(Room.occupied_count), 0))
+    )).one()
+    total_rooms, total_capacity, total_occupied = int(room_row[0]), int(room_row[1]), int(room_row[2])
+
+    total_hostels = await db.scalar(select(func.count(Hostel.id))) or 0
+    total_students = await db.scalar(select(func.count(User.id)).where(User.role == RoleEnum.student)) or 0
+    students_with_hostel = await db.scalar(
+        select(func.count(User.id)).where(User.role == RoleEnum.student, User.assigned_hostel_id.is_not(None))
+    ) or 0
+    total_groups = await db.scalar(select(func.count(Group.id))) or 0
+    confirmed_groups = await db.scalar(select(func.count(Group.id)).where(Group.status == GroupStatus.confirmed)) or 0
+
+    settings_row = await get_or_create_settings(db)
+
+    return {
+        "total_hostels": total_hostels,
+        "total_rooms": total_rooms,
+        "total_capacity": total_capacity,
+        "total_occupied": total_occupied,
+        "occupancy_pct": round((total_occupied / total_capacity) * 100, 1) if total_capacity else 0,
+        "total_students": total_students,
+        "students_with_hostel": students_with_hostel,
+        "total_groups": total_groups,
+        "confirmed_groups": confirmed_groups,
+        "hostel_window_state": window_state(settings_row),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Students (server-side paging: there can be ~15,000 of them)
+# ---------------------------------------------------------------------------
+
+class CgpaIn(BaseModel):
+    cgpa: float = Field(ge=0, le=10)
+
+
+class CapacityIn(BaseModel):
+    capacity: int = Field(ge=0)
 
 
 @router.get("/students")
-async def list_students(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Roster with CGPA + hostel assignment, for the admin to review/edit
-    before running the gender+CGPA hostel pre-allocation."""
-    result = await db.execute(select(User).where(User.role == "student"))
-    students = result.scalars().all()
-    hostels_result = await db.execute(select(Hostel))
-    hostel_names = {h.id: h.name for h in hostels_result.scalars().all()}
-    return [
-        {
-            "id": s.id,
-            "name": s.name,
-            "roll_no": s.roll_no,
-            "gender": s.gender.value,
-            "cgpa": s.cgpa,
-            "assigned_hostel_id": s.assigned_hostel_id,
-            "assigned_hostel_name": hostel_names.get(s.assigned_hostel_id),
-        }
-        for s in sorted(students, key=lambda s: -(s.cgpa or 0))
-    ]
+async def list_students(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    q: str = "",
+    gender: str = "",
+    assigned: str = Query("", description="'yes' | 'no' | ''"),
+    sort: str = Query("cgpa", description="cgpa | name | roll_no"),
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Roster with CGPA, group and hostel assignment, filterable and paged."""
+    filters = [User.role == RoleEnum.student]
+    if q.strip():
+        like = f"%{q.strip()}%"
+        filters.append(or_(User.name.ilike(like), User.roll_no.ilike(like), User.email.ilike(like)))
+    if gender in ("male", "female"):
+        filters.append(User.gender == GenderEnum(gender))
+    if assigned == "yes":
+        filters.append(User.assigned_hostel_id.is_not(None))
+    elif assigned == "no":
+        filters.append(User.assigned_hostel_id.is_(None))
+
+    total = await db.scalar(select(func.count(User.id)).where(*filters)) or 0
+
+    order = {"name": User.name.asc(), "roll_no": User.roll_no.asc()}.get(sort, User.cgpa.desc())
+    rows = (await db.execute(
+        select(User, Group.code)
+        .outerjoin(Group, Group.id == User.group_id)
+        .where(*filters)
+        .order_by(order, User.roll_no.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )).all()
+
+    hostel_names = {hid: name for hid, name in (await db.execute(select(Hostel.id, Hostel.name))).all()}
+    return {
+        "items": [
+            {
+                "id": u.id,
+                "name": u.name,
+                "roll_no": u.roll_no,
+                "gender": u.gender.value,
+                "cgpa": u.cgpa,
+                "group_code": code,
+                "assigned_hostel_id": u.assigned_hostel_id,
+                "assigned_hostel_name": hostel_names.get(u.assigned_hostel_id),
+            }
+            for u, code in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @router.put("/students/{user_id}/cgpa")
 async def update_student_cgpa(
-    user_id: str, cgpa: float, _=Depends(get_current_admin), db: AsyncSession = Depends(get_db)
+    user_id: str, payload: CgpaIn, _=Depends(get_current_admin), db: AsyncSession = Depends(get_db)
 ):
     user = await db.get(User, user_id)
-    if not user or user.role.value != "student":
+    if not user or user.role != RoleEnum.student:
         raise HTTPException(status_code=404, detail="Student not found")
-    user.cgpa = cgpa
+    user.cgpa = payload.cgpa
     await db.commit()
-    return {"message": "CGPA updated", "id": user_id, "cgpa": cgpa}
+    return {"message": "CGPA updated", "id": user_id, "cgpa": payload.cgpa}
+
+
+# ---------------------------------------------------------------------------
+# Hostels
+# ---------------------------------------------------------------------------
+
+@router.get("/hostels")
+async def list_hostels_admin(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    hostels = (await db.execute(select(Hostel).order_by(Hostel.gender, Hostel.name))).scalars().all()
+
+    built_rows = await db.execute(
+        select(Floor.hostel_id, func.sum(Room.capacity))
+        .select_from(Floor).join(Cluster, Cluster.floor_id == Floor.id).join(Room, Room.cluster_id == Cluster.id)
+        .group_by(Floor.hostel_id)
+    )
+    built = {hid: int(v or 0) for hid, v in built_rows.all()}
+
+    allotted_rows = await db.execute(
+        select(User.assigned_hostel_id, func.count(User.id))
+        .where(User.assigned_hostel_id.is_not(None)).group_by(User.assigned_hostel_id)
+    )
+    allotted = {hid: int(c) for hid, c in allotted_rows.all()}
+
+    return [
+        {
+            "hostel_id": h.id,
+            "name": h.name,
+            "gender": h.gender.value,
+            "capacity": h.capacity,
+            "seats_built": built.get(h.id, 0),
+            "allotted": allotted.get(h.id, 0),
+        }
+        for h in hostels
+    ]
 
 
 @router.put("/hostels/{hostel_id}/capacity")
 async def update_hostel_capacity(
-    hostel_id: str, capacity: int, _=Depends(get_current_admin), db: AsyncSession = Depends(get_db)
+    hostel_id: str, payload: CapacityIn, _=Depends(get_current_admin), db: AsyncSession = Depends(get_db)
 ):
     hostel = await db.get(Hostel, hostel_id)
     if not hostel:
         raise HTTPException(status_code=404, detail="Hostel not found")
-    hostel.capacity = capacity
+    hostel.capacity = payload.capacity
     await db.commit()
-    return {"message": "Capacity updated", "id": hostel_id, "capacity": capacity}
+    return {"message": "Capacity updated", "id": hostel_id, "capacity": payload.capacity}
+
+
+# ---------------------------------------------------------------------------
+# Settings: hostel-preference window (multi-day) + room-allotment "billing day"
+# ---------------------------------------------------------------------------
+
+class SettingsIn(BaseModel):
+    # hostel preference window
+    hostel_pref_opens_at: datetime | None = None
+    hostel_pref_closes_at: datetime | None = None
+    hostel_pref_manual_override_open: bool | None = None
+    hostel_pref_manual_override_closed: bool | None = None
+    # room allotment + payment ("billing day") window
+    allotment_date: str | None = None
+    window_start_time: str | None = None
+    window_end_time: str | None = None
+    manual_override_open: bool | None = None
+    manual_override_closed: bool | None = None
+
+
+def _settings_out(s) -> dict:
+    window = describe_window(s)
+    return {
+        "hostel_window": window,
+        "hostel_pref_opens_at": window["opens_at"],
+        "hostel_pref_closes_at": window["closes_at"],
+        "hostel_pref_manual_override_open": bool(s.hostel_pref_manual_override_open),
+        "hostel_pref_manual_override_closed": bool(s.hostel_pref_manual_override_closed),
+        "hostel_allocation_run": bool(s.hostel_allocation_run),
+        "hostel_allocation_run_at": s.hostel_allocation_run_at.isoformat() if s.hostel_allocation_run_at else None,
+        "allotment_date": s.allotment_date,
+        "window_start_time": s.window_start_time,
+        "window_end_time": s.window_end_time,
+        "manual_override_open": bool(s.manual_override_open),
+        "manual_override_closed": bool(s.manual_override_closed),
+    }
+
+
+@router.get("/settings")
+async def get_settings(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    return _settings_out(await get_or_create_settings(db))
+
+
+@router.put("/settings")
+async def update_settings(payload: SettingsIn, _=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Partial update: only the fields actually sent are changed (send an explicit
+    null to clear one). Extending or shortening the hostel window is just a new
+    hostel_pref_closes_at."""
+    s = await get_or_create_settings(db)
+    data = payload.model_dump(exclude_unset=True)
+
+    for key in ("window_start_time", "window_end_time"):
+        if key in data and (data[key] is None or not _HHMM.match(data[key])):
+            raise HTTPException(status_code=400, detail=f"{key} must be HH:MM (24h)")
+
+    for key in ("hostel_pref_opens_at", "hostel_pref_closes_at"):
+        if data.get(key) is not None and data[key].tzinfo is None:
+            data[key] = data[key].replace(tzinfo=timezone.utc)
+
+    opens = data.get("hostel_pref_opens_at", s.hostel_pref_opens_at)
+    closes = data.get("hostel_pref_closes_at", s.hostel_pref_closes_at)
+    if opens is not None and closes is not None:
+        if opens.tzinfo is None:
+            opens = opens.replace(tzinfo=timezone.utc)
+        if closes.tzinfo is None:
+            closes = closes.replace(tzinfo=timezone.utc)
+        if closes <= opens:
+            raise HTTPException(status_code=400, detail="The window must close after it opens.")
+
+    for key, value in data.items():
+        setattr(s, key, value)
+
+    # Keep the legacy boolean in step with the computed state.
+    s.hostel_preferences_open = window_state(s) == "open"
+    await db.commit()
+    await db.refresh(s)
+    return _settings_out(s)
 
 
 # ---------------------------------------------------------------------------
 # Hostel pre-allocation (gender + CGPA serial dictatorship)
 # ---------------------------------------------------------------------------
 
-@router.post("/hostel-allocation/run", response_model=HostelAllocationRunResult)
+async def _allocation_summary(db: AsyncSession) -> list[dict]:
+    """Per-hostel outcome straight from the DB (so it survives reloads)."""
+    hostels = (await db.execute(select(Hostel).order_by(Hostel.gender, Hostel.name))).scalars().all()
+    rows = await db.execute(
+        select(User.assigned_hostel_id, func.count(User.id), func.min(User.cgpa), func.avg(User.cgpa))
+        .where(User.role == RoleEnum.student, User.assigned_hostel_id.is_not(None))
+        .group_by(User.assigned_hostel_id)
+    )
+    stats = {hid: (int(c), mn, av) for hid, c, mn, av in rows.all()}
+    out = []
+    for h in hostels:
+        count, mn, av = stats.get(h.id, (0, None, None))
+        out.append({
+            "hostel_id": h.id,
+            "name": h.name,
+            "gender": h.gender.value,
+            "capacity": h.capacity,
+            "allotted": count,
+            "remaining": max(0, h.capacity - count),
+            "min_cgpa": round(mn, 2) if mn is not None else None,
+            "avg_cgpa": round(av, 2) if av is not None else None,
+        })
+    return out
+
+
+@router.get("/hostel-allocation/demand")
+async def hostel_allocation_demand(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Pre-run snapshot: demand per hostel, who hasn't applied, capacity vs students."""
+    report = await hostel_demand_report(db)
+    settings_row = await get_or_create_settings(db)
+    report["window"] = describe_window(settings_row)
+    report["allocation_run"] = bool(settings_row.hostel_allocation_run)
+    return report
+
+
+@router.get("/hostel-allocation/result")
+async def hostel_allocation_result(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    settings_row = await get_or_create_settings(db)
+    return {
+        "allocation_run": bool(settings_row.hostel_allocation_run),
+        "allocation_run_at": settings_row.hostel_allocation_run_at.isoformat() if settings_row.hostel_allocation_run_at else None,
+        "hostels": await _allocation_summary(db),
+    }
+
+
+@router.post("/hostel-allocation/run")
 async def run_hostel_allocation(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     """
-    Admin-triggered, one-shot: builds every unit (locked group or solo
-    student) from whoever has submitted a HostelPreference, runs the
-    gender-partitioned CGPA serial-dictatorship pass, retries any group
-    that couldn't fit as one block by exploding it into singles, and
-    persists User.assigned_hostel_id (+ Group hostel-lock fields) for
-    everyone resolved. Safe to re-run - it recomputes from current DB
-    state each time, though normally this should only be run once, right
-    after the hostel-preference window closes.
+    The "Allot hostels" button. Builds every unit (group or solo student),
+    runs the gender-partitioned CGPA serial-dictatorship pass, retries groups
+    that didn't fit as one block by exploding them into singles, and persists
+    the result. Students/groups who never filed a ranking are placed last into
+    whatever space is left.
+
+    Preconditions: the preference window must not be open, and no room
+    bookings may exist yet (re-running would invalidate them). Re-running
+    before rooms open (e.g. after fixing a CGPA) is fine - it recomputes
+    everything from the current data.
     """
     settings_row = await get_or_create_settings(db)
-    if settings_row.hostel_preferences_open:
+    state = window_state(settings_row)
+    if state == "open":
+        raise HTTPException(status_code=400, detail="Close the hostel-preference window before allotting hostels.")
+    if state == "not_started":
+        raise HTTPException(status_code=400, detail="The hostel-preference window hasn't opened yet - there is nothing to allot.")
+
+    if (await db.scalar(select(func.count(Booking.id)))) or 0:
         raise HTTPException(
             status_code=400,
-            detail="Close the hostel-preference window before running allocation, "
-                   "so no more preferences can change mid-run.",
+            detail="Room bookings already exist - re-running hostel allotment would invalidate them.",
         )
 
     result = await run_and_persist_hostel_allocation(db)
 
-    students_result = await db.execute(select(User).where(User.role == "student"))
-    all_students = students_result.scalars().all()
-    total_students = len(all_students)
-    assigned_count = len([s for s in all_students if s.assigned_hostel_id])
-    unassigned_count = total_students - assigned_count
-
-    # unassigned_unit_ids may contain group ids or user ids (or exploded
-    # "<group_id>:<student_id>" ids that DID get placed on retry - only the
-    # ones still in unassigned_unit_ids after the retry pass are truly
-    # unplaced). Resolve whatever's left to roll numbers for the admin.
-    unassigned_roll_nos: list[str] = []
+    # Which students are still without a hostel?
+    unplaced_students: set[str] = set()
+    unplaced_groups: set[str] = set()
     for unit_id in result.unassigned_unit_ids:
         if ":" in unit_id:
-            _, student_id = unit_id.split(":", 1)
-            user = await db.get(User, student_id)
-            if user:
-                unassigned_roll_nos.append(user.roll_no)
-            continue
-        user = await db.get(User, unit_id)
-        if user:
-            unassigned_roll_nos.append(user.roll_no)
-            continue
-        group = await db.get(Group, unit_id)
-        if group:
-            members_result = await db.execute(select(User).where(User.group_id == group.id))
-            unassigned_roll_nos.extend(m.roll_no for m in members_result.scalars().all())
+            unplaced_students.add(unit_id.split(":", 1)[1])
+        else:
+            unplaced_students.add(unit_id)
+            unplaced_groups.add(unit_id)
+    conds = []
+    if unplaced_students:
+        conds.append(User.id.in_(list(unplaced_students)[:900]))
+    if unplaced_groups:
+        conds.append(User.group_id.in_(list(unplaced_groups)[:900]))
+    unassigned_roll_nos: list[str] = []
+    if conds:
+        roll_rows = await db.execute(
+            select(User.roll_no).where(User.role == RoleEnum.student, User.assigned_hostel_id.is_(None), or_(*conds))
+            .order_by(User.roll_no).limit(500)
+        )
+        unassigned_roll_nos = [r[0] for r in roll_rows.all()]
+
+    total_students = await db.scalar(select(func.count(User.id)).where(User.role == RoleEnum.student)) or 0
+    assigned_count = await db.scalar(
+        select(func.count(User.id)).where(User.role == RoleEnum.student, User.assigned_hostel_id.is_not(None))
+    ) or 0
+
+    # How many students got their 1st choice, 2nd, ... or a fallback hostel?
+    breakdown: dict[str, int] = defaultdict(int)
+    for unit_id, rank in result.rank_got.items():
+        breakdown[str(rank) if rank else "fallback"] += result.unit_sizes.get(unit_id, 1)
 
     settings_row.hostel_allocation_run = True
     settings_row.hostel_allocation_run_at = datetime.now(timezone.utc)
+    settings_row.hostel_preferences_open = False
     await db.commit()
 
-    return HostelAllocationRunResult(
-        message="Hostel pre-allocation complete.",
-        total_students=total_students,
-        assigned_count=assigned_count,
-        unassigned_count=unassigned_count,
-        unassigned_roll_nos=unassigned_roll_nos,
-    )
+    return {
+        "message": "Hostel allotment complete.",
+        "total_students": total_students,
+        "assigned_count": assigned_count,
+        "unassigned_count": total_students - assigned_count,
+        "unassigned_roll_nos": unassigned_roll_nos,
+        "rank_breakdown": dict(breakdown),
+        "hostels": await _allocation_summary(db),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -151,25 +413,36 @@ async def retry_group_room_allocation(
 
 
 @router.get("/bookings")
-async def list_all_bookings(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Booking))
-    bookings = result.scalars().all()
+async def list_all_bookings(
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Newest bookings first. Related rows are fetched in bulk (no per-row queries)."""
+    bookings = (await db.execute(
+        select(Booking).order_by(Booking.created_at.desc()).offset(offset).limit(limit)
+    )).scalars().all()
+
+    group_ids = {b.group_id for b in bookings}
+    cluster_ids = {b.cluster_id for b in bookings}
+    member_ids = {mid for b in bookings for mid in (b.member_ids_csv or "").split(",") if mid}
+
+    groups = {g.id: g for g in (await db.execute(select(Group).where(Group.id.in_(group_ids)))).scalars().all()} if group_ids else {}
+    clusters = {c.id: c for c in (await db.execute(select(Cluster).where(Cluster.id.in_(cluster_ids)))).scalars().all()} if cluster_ids else {}
+    users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(member_ids)))).scalars().all()} if member_ids else {}
 
     out = []
     for b in bookings:
-        group = await db.get(Group, b.group_id)
-        cluster = await db.get(Cluster, b.cluster_id)
-        # member_ids_csv records exactly who this specific booking ROW
-        # seats - a group with more than one booking row (chunk-split, or
-        # last-resort singles) will appear once per row here, each listing
-        # only its own members, not the whole group.
-        row_member_ids = [mid for mid in (b.member_ids_csv or "").split(",") if mid]
-        row_members = []
-        for mid in row_member_ids:
-            m = await db.get(User, mid)
-            if m:
-                row_members.append({"name": m.name, "roll_no": m.roll_no})
-
+        group = groups.get(b.group_id)
+        cluster = clusters.get(b.cluster_id)
+        # member_ids_csv records exactly who this booking ROW seats - a group
+        # with several rows (chunk-split / last-resort singles) appears once
+        # per row, each listing only its own members.
+        row_members = [
+            {"name": users[mid].name, "roll_no": users[mid].roll_no}
+            for mid in (b.member_ids_csv or "").split(",") if mid in users
+        ]
         out.append(
             {
                 "booking_id": b.id,
@@ -188,25 +461,29 @@ async def list_all_bookings(_=Depends(get_current_admin), db: AsyncSession = Dep
 
 
 @router.get("/payments")
-async def list_all_payments(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Payment))
-    payments = result.scalars().all()
-    out = []
-    for p in payments:
-        user = await db.get(User, p.user_id)
-        out.append(
-            {
-                "payment_id": p.id,
-                "user_name": user.name if user else None,
-                "roll_no": user.roll_no if user else None,
-                "group_id": p.group_id,
-                "amount": p.amount,
-                "status": p.status.value,
-                "transaction_ref": p.transaction_ref,
-                "created_at": p.created_at,
-            }
-        )
-    return out
+async def list_all_payments(
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (await db.execute(
+        select(Payment, User.name, User.roll_no)
+        .outerjoin(User, User.id == Payment.user_id)
+        .order_by(Payment.id).offset(offset).limit(limit)
+    )).all()
+    return [
+        {
+            "payment_id": p.id,
+            "user_name": name,
+            "roll_no": roll,
+            "group_id": p.group_id,
+            "amount": p.amount,
+            "status": p.status.value,
+            "transaction_ref": p.transaction_ref,
+        }
+        for p, name, roll in rows
+    ]
 
 
 @router.post("/reassign")
@@ -254,43 +531,6 @@ async def reassign_group(
 
     await db.commit()
     return {"message": "Group reassigned successfully", "new_cluster_id": payload.new_cluster_id}
-
-
-@router.get("/overview")
-async def system_overview(_=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    hostels_result = await db.execute(
-        select(Hostel).options(selectinload(Hostel.floors).selectinload(Floor.clusters).selectinload(Cluster.rooms))
-    )
-    hostels = hostels_result.scalars().unique().all()
-
-    total_rooms = 0
-    total_capacity = 0
-    total_occupied = 0
-    for h in hostels:
-        for f in h.floors:
-            for c in f.clusters:
-                for r in c.rooms:
-                    total_rooms += 1
-                    total_capacity += r.capacity
-                    total_occupied += r.occupied_count
-
-    users_result = await db.execute(select(User))
-    total_students = len([u for u in users_result.scalars().all() if u.role.value == "student"])
-
-    groups_result = await db.execute(select(Group))
-    groups = groups_result.scalars().all()
-    confirmed_groups = len([g for g in groups if g.status == GroupStatus.confirmed])
-
-    return {
-        "total_hostels": len(hostels),
-        "total_rooms": total_rooms,
-        "total_capacity": total_capacity,
-        "total_occupied": total_occupied,
-        "occupancy_pct": round((total_occupied / total_capacity) * 100, 1) if total_capacity else 0,
-        "total_students": total_students,
-        "total_groups": len(groups),
-        "confirmed_groups": confirmed_groups,
-    }
 
 
 # ---------------------------------------------------------------------------

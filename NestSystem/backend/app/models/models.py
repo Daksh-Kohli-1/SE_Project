@@ -388,12 +388,21 @@ class AllocationSettings(Base):
     hostel_allocation_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hostel_preferences_open: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # ---- Hostel preference window (symmetric with the billing-day window) ----
+    # ---- Hostel preference window ----
+    # Runs for several DAYS (typically 3-4), so it is an absolute start/end
+    # datetime (stored UTC) rather than the single-day date + HH:MM pair the
+    # billing-day room window uses. The admin can extend/shorten it at any time
+    # by editing hostel_pref_closes_at. See app/services/hostel_window.py for the
+    # one place that turns these fields into open / closed / not_started.
+    hostel_pref_opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hostel_pref_closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hostel_pref_manual_override_open: Mapped[bool] = mapped_column(Boolean, default=False)
+    hostel_pref_manual_override_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Legacy single-day fields - no longer used by the hostel stage, kept so
+    # existing databases / other code that still reads them don't break.
     hostel_pref_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
     hostel_pref_start_time: Mapped[str] = mapped_column(String(5), default="09:00")
     hostel_pref_end_time: Mapped[str] = mapped_column(String(5), default="18:00")
-    hostel_pref_manual_override_open: Mapped[bool] = mapped_column(Boolean, default=False)
-    hostel_pref_manual_override_closed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

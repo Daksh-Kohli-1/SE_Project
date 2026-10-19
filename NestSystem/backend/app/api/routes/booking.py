@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.models import Group, User, Preference, GroupStatus, Booking, Cluster, Floor
+from app.models.models import Group, User, Preference, GroupStatus, Booking, Cluster, Floor, Hostel, Room
 from app.schemas.schemas import PreferenceSubmitRequest, BookingOut
 from app.api.deps import get_current_user, require_allotment_window_open
 
@@ -102,8 +102,12 @@ async def submit_preferences(
 async def booking_status(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not current_user.group_id:
         return None
+    # A group can have several booking rows (chunk-split / last-resort singles),
+    # so never use scalar_one_or_none() here. Prefer the row that actually seats
+    # THIS student; fall back to any row of the group.
     result = await db.execute(select(Booking).where(Booking.group_id == current_user.group_id))
-    booking = result.scalar_one_or_none()
+    rows = result.scalars().all()
+    booking = next((r for r in rows if current_user.id in (r.member_ids_csv or "").split(",")), None) or (rows[0] if rows else None)
     if not booking:
         return None
     return BookingOut(
@@ -115,3 +119,37 @@ async def booking_status(current_user: User = Depends(get_current_user), db: Asy
         created_at=booking.created_at,
         confirmed_at=booking.confirmed_at,
     )
+
+
+@router.get("/my-seat")
+async def my_seat(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Where THIS student actually sleeps, for the dashboard / profile.
+    allocated=False until the room engine has really seated them (i.e. after the
+    group's first payment cleared and a cluster had space) - never inferred from
+    anything else, so the UI can't claim a room that doesn't exist.
+    """
+    if not current_user.group_id:
+        return {"allocated": False}
+    result = await db.execute(select(Booking).where(Booking.group_id == current_user.group_id))
+    for row in result.scalars().all():
+        if current_user.id not in (row.member_ids_csv or "").split(","):
+            continue
+        cluster = await db.get(Cluster, row.cluster_id)
+        floor = await db.get(Floor, cluster.floor_id) if cluster else None
+        hostel = await db.get(Hostel, floor.hostel_id) if floor else None
+        room_numbers = []
+        for room_id in (row.room_ids or "").split(","):
+            room = await db.get(Room, room_id) if room_id else None
+            if room:
+                room_numbers.append(room.room_number)
+        return {
+            "allocated": True,
+            "status": row.status.value,
+            "hostel_name": hostel.name if hostel else None,
+            "floor_number": floor.floor_number if floor else None,
+            "cluster_id": row.cluster_id,
+            "cluster_number": cluster.cluster_number if cluster else None,
+            "room_numbers": sorted(room_numbers),
+        }
+    return {"allocated": False}

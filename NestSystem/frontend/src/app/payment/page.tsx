@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import { useHostelAssignment } from "../../lib/useHostelAssignment";
+import HostelGate from "../../components/HostelGate";
 
 export default function PaymentPage() {
+  const gate = useHostelAssignment();
   const [activeTab, setActiveTab] = useState<"fee" | "mess" | "fines" | "history">("fee");
   const [statuses, setStatuses] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
@@ -20,18 +23,14 @@ export default function PaymentPage() {
       const uRes = await api.get("/api/auth/me");
       setUser(uRes.data);
     } catch {
-      setUser({ id: "u-avleen", name: "Avleen Kaur" });
+      setUser(null);
     }
 
     try {
       const pRes = await api.get("/api/payments/status");
       setStatuses(pRes.data);
     } catch {
-      setStatuses([
-        { user_id: "u-avleen", name: "Avleen Kaur", status: "pending" },
-        { user_id: "u-ananya", name: "Ananya Singh", status: "paid" },
-        { user_id: "u-priya", name: "Priya Reddy", status: "pending" },
-      ]);
+      setStatuses([]);
     }
   }
 
@@ -65,13 +64,20 @@ export default function PaymentPage() {
     }
   }
 
-  const myStatus = statuses.find((s) => s.name?.includes("Avleen") || s.user_id === user?.id);
+  const myStatus = statuses.find((s) => s.user_id === user?.id);
   const isPaid = myStatus?.status === "paid";
 
   return (
     <main className="min-h-screen pb-20 bg-[#0B0B0C]">
       <Navbar active="/payment" />
 
+      {gate.loading && <p className="text-xs text-white/50 text-center mt-16">Loading…</p>}
+
+      {!gate.loading && !gate.allotted && (
+        <HostelGate what="Fee payment" windowState={gate.windowState} />
+      )}
+
+      {!gate.loading && gate.allotted && (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {/* Header */}
         <motion.div
@@ -330,16 +336,20 @@ export default function PaymentPage() {
               <div className="bg-white/[0.03] border border-white/10 rounded-2xl shadow-sm p-6">
                 <h3 className="text-xl font-semibold text-white mb-4">Recent Payment History</h3>
                 <div className="space-y-3">
+                  {isPaid ? (
                   <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 flex items-center justify-between">
                     <div>
                       <p className="text-xs font-bold text-white">Annual Hostel Fee (2026-27)</p>
-                      <p className="text-[10px] text-white/50">Ref: SIMPAY-AVLEEN01 · 04 Sep 2026</p>
+                      <p className="text-[10px] text-white/50">Hostel fee payment</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-white">₹60,000</p>
                       <span className="text-[10px] font-bold text-green-400">Paid ✓</span>
                     </div>
                   </div>
+                  ) : (
+                    <p className="text-xs text-white/50">No payments yet.</p>
+                  )}
                 </div>
               </div>
             )}
@@ -349,6 +359,7 @@ export default function PaymentPage() {
         {message && <p className="text-xs text-center text-white/60 mt-4">{message}</p>}
         {allocationMsg && <p className="text-xs text-center text-blue-300 font-bold mt-2">{allocationMsg}</p>}
       </div>
+      )}
 
       {/* Payment Receipt Modal */}
       <AnimatePresence>
@@ -377,7 +388,7 @@ export default function PaymentPage() {
               <div className="space-y-3 text-xs mb-6">
                 <div className="flex items-center justify-between">
                   <span className="text-white/60 font-medium">Student Name</span>
-                  <span className="font-bold text-white">Avleen Kaur</span>
+                  <span className="font-bold text-white">{user?.name}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-white/60 font-medium">Roll Number</span>

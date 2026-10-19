@@ -1,62 +1,85 @@
 """
 Seeds the database with:
-  1. All 6 hostels (3 boys, 3 girls), each with 8 floors, 29 clusters/floor,
-     58 rooms/floor, numbered the way Thapar actually numbers them
-     (Floor 1 = 101-158, Floor 2 = 201-258, ... Floor 8 = 801-858).
-  2. A handful of demo users, groups, hostel preferences, payments and
-     bookings so the app has something to look at immediately after
-     `docker compose up`, INCLUDING scenarios that specifically exercise
-     the new payment-triggered room-locking behaviour:
-       - a 4-member group where only 1 member has paid so far, and that
-         payment already locked an entire empty cluster for the group
-         (via allocation.handle_group_payment_paid).
-       - a 3-member group placed into a cluster that already had 1
-         pre-existing occupant (classic group-of-3 completing rule).
-       - a scenario where empty clusters have run out for a hostel and a
-         group had to be chunk-split across two clusters on the same
-         floor (exercises Booking's new one-row-per-chunk support).
+  1. 18 placeholder hostels (9 boys + 9 girls), each with 8 floors, 29
+     clusters/floor, 58 rooms/floor (928 seats), numbered the way Thapar
+     numbers them (Floor 1 = 101-158, ... Floor 8 = 801-858).
+     -> 9 x 928 = 8,352 seats per gender for ~7,500 students per gender.
+     Swap HOSTEL names / counts below for the real data when you have it.
+  2. 15,000 students (about half male, half female) with random CGPAs, all
+     sharing the password "Pass@123" (one bcrypt hash is computed once - hashing
+     15k passwords individually would take ~an hour).
+  3. Groups + hostel preferences simulating a live preference window:
+       - ~40% solo applicants, the rest in groups of 2-4 (same gender),
+       - ~90% of units have filed a ranking of 5-6 hostels, skewed so a few
+         hostels are heavily oversubscribed (so CGPA cutoffs actually differ),
+       - ~10% have NOT applied, to exercise the "didn't apply" fallback tier.
+  4. An open hostel-preference window (4 days from now), no hostel allotted yet,
+     no room bookings - i.e. the state right before the admin presses
+     "Allot hostels".
+
+Demo logins
+-----------
+  admin@thapar.edu          / Admin@123
+  avleen.kaur@thapar.edu    / Nest@123   (female, CGPA 9.12, no group, no ranking yet)
+  student<N>@thapar.edu     / Pass@123   (N = 1..14999)
 
 Room numbering / clustering rule
 ---------------------------------
-Each floor has 58 rooms, paired into 29 two-room clusters (a cluster =
-2 rooms sharing a washroom, 2 seats per room = 4 seats per cluster).
-Per the brief, connected rooms within a cluster share the same number
-parity - odd rooms pair with odd, even rooms pair with even (e.g. Room 101
-is connected to Room 103, not 102). On a 58-room floor there are 29 odd
-room numbers and 29 even room numbers - an odd count on each side - so 14
-odd-odd clusters + 14 even-even clusters use up 56 rooms, and the two
-numbers left over (one odd, one even) are paired into a final 29th
-cluster. That keeps the total at exactly 29 clusters / 58 rooms per floor
-while staying as close as possible to the "same parity connects" rule.
+Each floor has 58 rooms paired into 29 two-room clusters (2 rooms sharing a
+washroom, 2 seats per room = 4 seats per cluster). Connected rooms share the
+same parity (odd with odd, even with even): 14 odd-odd + 14 even-even clusters
+use 56 rooms and the two leftover numbers form the 29th cluster.
 """
-from datetime import datetime, timezone
 import random
+import string
+import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.models.models import (
-    User, Hostel, Floor, Cluster, Room, Group, Preference, Booking, Payment,
-    HostelPreference, AllocationSettings,
-    RoleEnum, GenderEnum, GroupStatus, BookingStatus, PaymentStatus,
+    User, Hostel, Floor, Cluster, Room, Group, HostelPreference, AllocationSettings,
+    RoleEnum, GenderEnum, GroupStatus,
 )
-from app.algorithms.allocation import handle_group_payment_paid
 
+NUM_STUDENTS = 15000
 FLOORS_PER_HOSTEL = 8
 ROOMS_PER_FLOOR = 58
 CLUSTERS_PER_FLOOR = 29
-HOSTEL_FEE = 60000
+SEATS_PER_HOSTEL = FLOORS_PER_HOSTEL * CLUSTERS_PER_FLOOR * 4   # 928
+HOSTEL_PREF_DAYS = 4
+SEED = 42  # fixed so every fresh database gets the same demo data
 
-BOYS_HOSTELS = ["Agira Hall", "Neeram Hall", "Anantan Hall"]
-GIRLS_HOSTELS = ["Hostel PG", "Pavani Hall", "Dhriti Hall"]
+# Placeholder names - replace with the real Thapar hostel list later.
+BOYS_HOSTELS = [
+    "Agira Hall", "Neeram Hall", "Anantan Hall", "Amritam Hall", "Vedant Hall",
+    "Prithvi Hall", "Jwala Hall", "Tejas Hall", "Aravali Hall",
+]
+GIRLS_HOSTELS = [
+    "Hostel PG", "Pavani Hall", "Dhriti Hall", "Ananya Hall", "Kaveri Hall",
+    "Sarayu Hall", "Ganga Hall", "Yamuna Hall", "Narmada Hall",
+]
+
+FIRST_M = ["Aarav", "Vihaan", "Arjun", "Reyansh", "Kabir", "Rohan", "Ishaan", "Aditya", "Yash", "Harsh",
+           "Manav", "Karan", "Nikhil", "Rahul", "Siddharth", "Dev", "Pranav", "Tanmay", "Jaskaran", "Gurkirat"]
+FIRST_F = ["Ananya", "Diya", "Saanvi", "Aanya", "Ishita", "Kavya", "Meera", "Riya", "Simran", "Tanvi",
+           "Navya", "Priya", "Sneha", "Pooja", "Harleen", "Gurleen", "Mehak", "Palak", "Jasleen", "Nisha"]
+LAST = ["Sharma", "Singh", "Kaur", "Gill", "Verma", "Gupta", "Mehta", "Bansal", "Arora", "Malhotra",
+        "Chopra", "Sethi", "Bhatia", "Kapoor", "Khanna", "Jain", "Garg", "Goyal", "Sandhu", "Dhillon"]
+BRANCHES = ["Computer Engineering", "Electronics & Communication", "Mechanical Engineering",
+            "Civil Engineering", "Chemical Engineering", "Biotechnology"]
+
+GROUP_SIZE_WEIGHTS = {1: 40, 2: 20, 3: 12, 4: 28}   # percent-ish weights
+P_UNIT_APPLIED = 0.90
 
 
 def generate_room_number_pairs(floor_number: int) -> list[tuple[int, int]]:
     """Return the 29 (room_a_number, room_b_number) pairs for one floor."""
     base = floor_number * 100
-    odds = list(range(base + 1, base + 58, 2))   # 29 numbers: base+1 .. base+57
-    evens = list(range(base + 2, base + 59, 2))  # 29 numbers: base+2 .. base+58
+    odds = list(range(base + 1, base + 58, 2))   # 29 numbers
+    evens = list(range(base + 2, base + 59, 2))  # 29 numbers
 
     pairs: list[tuple[int, int]] = []
     for i in range(0, 28, 2):          # 14 odd-odd clusters
@@ -67,288 +90,170 @@ def generate_room_number_pairs(floor_number: int) -> list[tuple[int, int]]:
     return pairs
 
 
-async def _build_hostel(db, name: str, gender: GenderEnum) -> Hostel:
-    hostel = Hostel(name=name, gender=gender, year=0, capacity=FLOORS_PER_HOSTEL * CLUSTERS_PER_FLOOR * 4)
-    db.add(hostel)
-    await db.flush()
+def _new_id() -> str:
+    return str(uuid.uuid4())
 
-    for floor_num in range(1, FLOORS_PER_HOSTEL + 1):
-        floor = Floor(hostel_id=hostel.id, floor_number=floor_num)
-        db.add(floor)
+
+async def _flush_in_batches(db, objs: list, batch: int = 2000) -> None:
+    for i in range(0, len(objs), batch):
+        db.add_all(objs[i:i + batch])
         await db.flush()
 
-        room_pairs = generate_room_number_pairs(floor_num)
-        for cluster_num, (num_a, num_b) in enumerate(room_pairs, start=1):
-            cluster = Cluster(floor_id=floor.id, cluster_number=cluster_num)
-            db.add(cluster)
-            await db.flush()
 
-            db.add(Room(cluster_id=cluster.id, room_label="A", room_number=num_a, capacity=2, occupied_count=0))
-            db.add(Room(cluster_id=cluster.id, room_label="B", room_number=num_b, capacity=2, occupied_count=0))
+async def _build_hostels(db, names: list[str], gender: GenderEnum) -> list[Hostel]:
+    """Create hostels with the full floor/cluster/room tree using bulk inserts."""
+    hostels, floors, clusters, rooms = [], [], [], []
+    for name in names:
+        hostel = Hostel(id=_new_id(), name=name, gender=gender, year=0, capacity=SEATS_PER_HOSTEL)
+        hostels.append(hostel)
+        for floor_num in range(1, FLOORS_PER_HOSTEL + 1):
+            floor = Floor(id=_new_id(), hostel_id=hostel.id, floor_number=floor_num)
+            floors.append(floor)
+            for cluster_num, (num_a, num_b) in enumerate(generate_room_number_pairs(floor_num), start=1):
+                cluster = Cluster(id=_new_id(), floor_id=floor.id, cluster_number=cluster_num)
+                clusters.append(cluster)
+                rooms.append(Room(id=_new_id(), cluster_id=cluster.id, room_label="A", room_number=num_a, capacity=2, occupied_count=0))
+                rooms.append(Room(id=_new_id(), cluster_id=cluster.id, room_label="B", room_number=num_b, capacity=2, occupied_count=0))
 
-    await db.flush()
-    return hostel
-
-
-async def _get_cluster(db, hostel: Hostel, floor_number: int, cluster_number: int) -> Cluster:
-    result = await db.execute(
-        select(Cluster)
-        .join(Floor, Cluster.floor_id == Floor.id)
-        .where(Floor.hostel_id == hostel.id, Floor.floor_number == floor_number, Cluster.cluster_number == cluster_number)
-    )
-    return result.scalar_one()
-
-
-async def _get_rooms(db, cluster: Cluster) -> dict[str, Room]:
-    result = await db.execute(select(Room).where(Room.cluster_id == cluster.id))
-    return {r.room_label: r for r in result.scalars().all()}
+    await _flush_in_batches(db, hostels)
+    await _flush_in_batches(db, floors)
+    await _flush_in_batches(db, clusters)
+    await _flush_in_batches(db, rooms, batch=4000)
+    return hostels
 
 
-def _make_student(name, roll_no, email, gender, year, branch, contact, cgpa=0.0) -> User:
-    return User(
-        name=name,
-        roll_no=roll_no,
-        email=email,
-        password_hash=hash_password("Pass@123"),
-        role=RoleEnum.student,
-        gender=gender,
-        year=year,
-        branch=branch,
-        contact=contact,
-        cgpa=cgpa,
-    )
-
-
-async def _fill_cluster_completely(db, hostel: Hostel, floor_number: int, cluster_number: int) -> None:
-    """Helper for building the 'empty clusters have run out' scenario:
-    marks every seat in a cluster as occupied without creating full demo
-    users for each seat (just enough to make the cluster unavailable)."""
-    cluster = await _get_cluster(db, hostel, floor_number, cluster_number)
-    rooms = await _get_rooms(db, cluster)
-    rooms["A"].occupied_count = 2
-    rooms["B"].occupied_count = 2
+def _ranked_choice(rng: random.Random, hostel_ids: list[str], weights: list[float], k: int) -> list[str]:
+    """Weighted sample without replacement (earlier hostels are more popular)."""
+    pool = list(zip(hostel_ids, weights))
+    picked: list[str] = []
+    for _ in range(min(k, len(pool))):
+        total = sum(w for _, w in pool)
+        r = rng.uniform(0, total)
+        acc = 0.0
+        for idx, (hid, w) in enumerate(pool):
+            acc += w
+            if r <= acc:
+                picked.append(hid)
+                pool.pop(idx)
+                break
+    return picked
 
 
 async def seed_initial_data():
+    rng = random.Random(SEED)
+
     async with AsyncSessionLocal() as db:
         existing = await db.execute(select(Hostel.id).limit(1))
         if existing.scalar_one_or_none():
             return  # already seeded
 
-        # ---------- Hostels (3 boys + 3 girls, 8 floors / 29 clusters each) ----------
-        hostels: dict[str, Hostel] = {}
-        for name in BOYS_HOSTELS:
-            hostels[name] = await _build_hostel(db, name, GenderEnum.male)
-        for name in GIRLS_HOSTELS:
-            hostels[name] = await _build_hostel(db, name, GenderEnum.female)
+        # ---------- Hostels ----------
+        boys = await _build_hostels(db, BOYS_HOSTELS, GenderEnum.male)
+        girls = await _build_hostels(db, GIRLS_HOSTELS, GenderEnum.female)
         await db.commit()
 
         # ---------- Admin ----------
-        admin = User(
-            name="System Admin",
-            roll_no="ADMIN001",
-            email="admin@thapar.edu",
-            password_hash=hash_password("Admin@123"),
-            role=RoleEnum.admin,
-            gender=GenderEnum.other,
-            year=0,
-            branch="Administration",
-            contact="0000000000",
-        )
-        db.add(admin)
+        db.add(User(
+            name="System Admin", roll_no="ADMIN001", email="admin@thapar.edu",
+            password_hash=hash_password("Admin@123"), role=RoleEnum.admin,
+            gender=GenderEnum.other, year=0, branch="Administration", contact="0000000000",
+        ))
 
-        # ---------- Demo students ----------
-        students = []
-        for i in range(1, 101):
-            if i == 1:
-                avleen = _make_student("Avleen Kaur", "2023CS1045", "avleen.kaur@thapar.edu", GenderEnum.female, 2, "Computer Engineering", "9876543210", cgpa=9.12)
-                avleen.password_hash = hash_password("Nest@123")
-                avleen.father_name = "Gurpreet Singh Kaur"
-                avleen.mother_name = "Harpreet Kaur"
-                avleen.emergency_contact_name = "Gurpreet Singh"
-                avleen.emergency_contact_phone = "+91 98765 43210"
-                avleen.aadhaar_no = "XXXX-XXXX-8921"
-                avleen.address = "House No. 452, Sector 15-A, Chandigarh"
-                avleen.dob = "2004-05-14"
-                avleen.vehicle_type = "Scooter"
-                avleen.vehicle_model = "Vespa SXL 125"
-                avleen.vehicle_reg_no = "CH01-CB-4921"
-                avleen.program = "B.Tech"
-                avleen.department = "Computer Engineering"
-                avleen.section = "COE-2"
-                db.add(avleen)
-                students.append(avleen)
-            else:
-                student = _make_student(
-                    f"Student {i}",
-                    f"2023CS{1100+i}",
-                    f"student{i}@thapar.edu",
-                    GenderEnum.male if i % 2 == 0 else GenderEnum.female,
-                    1,
-                    "Computer Science",
-                    f"9999900{i:03d}",
-                    cgpa=round(random.uniform(6.0, 9.8), 2),
+        # ---------- Students ----------
+        student_hash = hash_password("Pass@123")   # computed ONCE, shared by all demo students
+        students: list[User] = []
+
+        avleen = User(
+            id=_new_id(), name="Avleen Kaur", roll_no="2023CS1045", email="avleen.kaur@thapar.edu",
+            password_hash=hash_password("Nest@123"), role=RoleEnum.student, gender=GenderEnum.female,
+            year=2, branch="Computer Engineering", contact="9876543210", cgpa=9.12,
+            father_name="Gurpreet Singh Kaur", mother_name="Harpreet Kaur",
+            emergency_contact_name="Gurpreet Singh", emergency_contact_phone="+91 98765 43210",
+            aadhaar_no="XXXX-XXXX-8921", address="House No. 452, Sector 15-A, Chandigarh",
+            dob="2004-05-14", vehicle_type="Scooter", vehicle_model="Vespa SXL 125",
+            vehicle_reg_no="CH01-CB-4921", program="B.Tech", department="Computer Engineering",
+            section="COE-2",
+        )
+        students.append(avleen)
+
+        for i in range(1, NUM_STUDENTS):
+            is_male = rng.random() < 0.5
+            first = rng.choice(FIRST_M if is_male else FIRST_F)
+            cgpa = round(min(10.0, max(5.5, rng.gauss(8.0, 1.0))), 2)
+            students.append(User(
+                id=_new_id(),
+                name=f"{first} {rng.choice(LAST)}",
+                roll_no=f"1023{i:05d}",
+                email=f"student{i}@thapar.edu",
+                password_hash=student_hash,
+                role=RoleEnum.student,
+                gender=GenderEnum.male if is_male else GenderEnum.female,
+                year=rng.randint(1, 4),
+                branch=rng.choice(BRANCHES),
+                contact=f"98{i:08d}",
+                cgpa=cgpa,
+            ))
+        await _flush_in_batches(db, students)
+
+        # ---------- Groups + hostel preferences ----------
+        used_codes: set[str] = set()
+
+        def new_code() -> str:
+            while True:
+                code = "".join(rng.choices(string.ascii_uppercase + string.digits, k=6))
+                if code not in used_codes:
+                    used_codes.add(code)
+                    return code
+
+        pool_by_gender = {
+            GenderEnum.male: [s for s in students if s.gender == GenderEnum.male],
+            GenderEnum.female: [s for s in students if s.gender == GenderEnum.female and s is not avleen],
+        }
+        hostel_ids_by_gender = {
+            GenderEnum.male: [h.id for h in boys],
+            GenderEnum.female: [h.id for h in girls],
+        }
+        sizes = list(GROUP_SIZE_WEIGHTS.keys())
+        size_weights = list(GROUP_SIZE_WEIGHTS.values())
+
+        groups: list[Group] = []
+        prefs: list[HostelPreference] = []
+        membership: list[tuple[User, str]] = []
+
+        for gender, pool in pool_by_gender.items():
+            rng.shuffle(pool)
+            ids = hostel_ids_by_gender[gender]
+            # Earlier hostels in the list are more popular (weights ~ rank^-1.5 inverted).
+            weights = [(len(ids) - i) ** 1.5 for i in range(len(ids))]
+            pos = 0
+            while pos < len(pool):
+                size = rng.choices(sizes, size_weights)[0]
+                members = pool[pos:pos + size]
+                pos += size
+                applied = rng.random() < P_UNIT_APPLIED
+
+                if len(members) == 1 and not applied:
+                    continue  # never touched the system: no group, no ranking
+
+                group = Group(
+                    id=_new_id(), code=new_code(), leader_id=members[0].id,
+                    size_limit=4, status=GroupStatus.forming,
                 )
-                db.add(student)
-                students.append(student)
+                groups.append(group)
+                for m in members:
+                    membership.append((m, group.id))
+                if applied:
+                    ranking = _ranked_choice(rng, ids, weights, rng.choice([5, 6]))
+                    prefs.append(HostelPreference(group_id=group.id, hostel_ids_csv=",".join(ranking)))
 
+        # Users already exist (group_id NULL) so the groups' leader FK is valid.
+        await _flush_in_batches(db, groups)
+        for member, group_id in membership:
+            member.group_id = group_id
         await db.flush()
+        await _flush_in_batches(db, prefs)
 
-        # For scenarios below, let's pick some random students from the pool
-        solo_boy = students[1]
-        leader_3 = students[3]
-        member_3a = students[5]
-        member_3b_unpaid = students[7]
-        leader_4 = students[9]
-        member_4a = students[11]
-        member_4b = students[13]
-        member_4c = students[15]
-        solo_girl = students[2]
-        fresh_student = students[4]
-
-        now = datetime.now(timezone.utc)
-
-        # ============================================================
-        # Hostel pre-allocation: every group/solo unit gets its assigned
-        # hostel set directly here (as if run_and_persist_hostel_allocation
-        # already ran), PLUS a HostelPreference row each, so the admin can
-        # re-run the hostel algorithm against this data and see consistent
-        # results.
-        # ============================================================
-        agira = hostels["Agira Hall"]
-        pavani = hostels["Pavani Hall"]
-
-        # ---- Scenario 1: solo boy, paid, allotted a single seat ----
-        cluster_solo = await _get_cluster(db, agira, 1, 2)
-        rooms_solo = await _get_rooms(db, cluster_solo)
-        rooms_solo["A"].occupied_count = 1
-
-        group_solo = Group(
-            code="SOLOK1", leader_id=solo_boy.id, size_limit=1, status=GroupStatus.confirmed,
-            booking_ready_at=now, assigned_hostel_id=agira.id, hostel_locked_at=now,
-        )
-        db.add(group_solo)
-        await db.flush()
-        solo_boy.group_id = group_solo.id
-        solo_boy.assigned_hostel_id = agira.id
-
-        db.add(HostelPreference(group_id=group_solo.id, hostel_ids_csv=f"{agira.id},{hostels['Neeram Hall'].id}"))
-        db.add(Preference(group_id=group_solo.id, cluster_id=cluster_solo.id, rank=1))
-        db.add(Payment(user_id=solo_boy.id, group_id=group_solo.id, transaction_ref="SIMPAY-DEMO0001", amount=HOSTEL_FEE, status=PaymentStatus.paid))
-        db.add(Booking(
-            group_id=group_solo.id, cluster_id=cluster_solo.id, room_ids=rooms_solo["A"].id,
-            member_ids_csv=solo_boy.id, status=BookingStatus.confirmed, confirmed_at=now,
-        ))
-
-        # ---- Scenario 2: 3-member group completes an existing single's cluster,
-        #      only 2 of the 3 have paid so far - Booking already reserved the
-        #      full cluster the moment the FIRST of them paid. ----
-        cluster_partial = await _get_cluster(db, agira, 2, 5)
-        rooms_partial = await _get_rooms(db, cluster_partial)
-        # Leader's room (A) stays empty; the connected room (B) already has
-        # 1 pre-existing occupant - this is exactly the shape
-        # evaluate_cluster_for_group() requires for a 3-member group to
-        # complete the cluster to 4/4.
-        rooms_partial["B"].occupied_count = 1
-
-        group_partial = Group(
-            code="TRIO001", leader_id=leader_3.id, size_limit=4, status=GroupStatus.confirmed,
-            booking_ready_at=now, assigned_hostel_id=agira.id, hostel_locked_at=now,
-        )
-        db.add(group_partial)
-        await db.flush()
-        leader_3.group_id = group_partial.id
-        member_3a.group_id = group_partial.id
-        member_3b_unpaid.group_id = group_partial.id  # in the group, hasn't paid yet
-        for u in (leader_3, member_3a, member_3b_unpaid):
-            u.assigned_hostel_id = agira.id
-
-        db.add(HostelPreference(group_id=group_partial.id, hostel_ids_csv=f"{agira.id}"))
-        db.add(Preference(group_id=group_partial.id, cluster_id=cluster_partial.id, rank=1))
-        db.add(Payment(user_id=leader_3.id, group_id=group_partial.id, transaction_ref="SIMPAY-DEMO0002", amount=HOSTEL_FEE, status=PaymentStatus.paid))
-        db.add(Payment(user_id=member_3a.id, group_id=group_partial.id, transaction_ref="SIMPAY-DEMO0003", amount=HOSTEL_FEE, status=PaymentStatus.paid))
-        db.add(Payment(user_id=member_3b_unpaid.id, group_id=group_partial.id, amount=HOSTEL_FEE, status=PaymentStatus.pending))
-        # NOTE: this Booking is seeded directly (matching "leader_3 paid first
-        # and locked the whole cluster, joining the pre-existing single").
-        # In production this row would instead be created automatically by
-        # handle_group_payment_paid() the moment leader_3's payment landed.
-        db.add(Booking(
-            group_id=group_partial.id, cluster_id=cluster_partial.id,
-            room_ids=f"{rooms_partial['A'].id},{rooms_partial['B'].id}",
-            member_ids_csv=f"{leader_3.id},{member_3a.id},{member_3b_unpaid.id}",
-            status=BookingStatus.reserved, confirmed_at=None,
-        ))
-        # Final occupancy: Room A takes 2 of the group's 3 members, Room B's
-        # existing 1 occupant is joined by the group's 3rd member -> 2/2.
-        # Cluster is now 4/4 (full), even though 1 of the 3 group members
-        # (member_3b_unpaid) hasn't paid yet - the seats were reserved the
-        # moment the group's first payment (leader_3) landed.
-        rooms_partial["A"].occupied_count = 2
-        rooms_partial["B"].occupied_count = 2
-
-        # ---- Scenario 3: full 4-member group, ONLY 1 PAID SO FAR - this is the
-        #      key new scenario: the first payment already locked the ENTIRE
-        #      empty cluster for the group, well before the other 3 pay.
-        #      We seed this by actually calling the live algorithm so the
-        #      Booking/Room state is produced exactly the way production will
-        #      produce it. ----
-        cluster_quad = await _get_cluster(db, agira, 3, 10)  # left fully empty on purpose
-
-        group_full = Group(
-            code="QUAD001", leader_id=leader_4.id, size_limit=4, status=GroupStatus.confirmed,
-            booking_ready_at=now, assigned_hostel_id=agira.id, hostel_locked_at=now,
-        )
-        db.add(group_full)
-        await db.flush()
-        for u in (leader_4, member_4a, member_4b, member_4c):
-            u.group_id = group_full.id
-            u.assigned_hostel_id = agira.id
-
-        db.add(HostelPreference(group_id=group_full.id, hostel_ids_csv=f"{agira.id}"))
-        db.add(Preference(group_id=group_full.id, cluster_id=cluster_quad.id, rank=1))
-        first_payment = Payment(
-            user_id=leader_4.id, group_id=group_full.id, transaction_ref="SIMPAY-DEMO0004",
-            amount=HOSTEL_FEE, status=PaymentStatus.pending,
-        )
-        db.add(first_payment)
-        for i, u in enumerate((member_4a, member_4b, member_4c), start=5):
-            db.add(Payment(user_id=u.id, group_id=group_full.id, amount=HOSTEL_FEE, status=PaymentStatus.pending))
-        await db.flush()
-
-        # ---- Scenario 4: Avleen Kaur group, allotted Room 126 in Pavani Hall ----
-        res = await db.execute(
-            select(Room).join(Cluster).join(Floor).where(
-                Floor.hostel_id == pavani.id, Room.room_number == 126
-            )
-        )
-        room_126 = res.scalar_one()
-
-        res_cluster = await db.execute(select(Cluster).where(Cluster.id == room_126.cluster_id))
-        cluster_avleen = res_cluster.scalar_one()
-
-        room_126.occupied_count = 1
-
-        group_avleen = Group(
-            code="N7K4P2", leader_id=avleen.id, size_limit=4, status=GroupStatus.confirmed,
-            booking_ready_at=now, assigned_hostel_id=pavani.id, hostel_locked_at=now,
-        )
-        db.add(group_avleen)
-        await db.flush()
-        avleen.group_id = group_avleen.id
-        solo_girl.group_id = group_avleen.id
-        avleen.assigned_hostel_id = pavani.id
-        solo_girl.assigned_hostel_id = pavani.id
-
-        db.add(HostelPreference(group_id=group_avleen.id, hostel_ids_csv=f"{pavani.id}"))
-        db.add(Preference(group_id=group_avleen.id, cluster_id=cluster_avleen.id, rank=1))
-        db.add(Payment(user_id=avleen.id, group_id=group_avleen.id, transaction_ref="SIMPAY-AVLEEN01", amount=HOSTEL_FEE, status=PaymentStatus.pending))
-        db.add(Payment(user_id=solo_girl.id, group_id=group_avleen.id, transaction_ref="SIMPAY-ANANYA01", amount=HOSTEL_FEE, status=PaymentStatus.paid))
-        db.add(Booking(
-            group_id=group_avleen.id, cluster_id=cluster_avleen.id, room_ids=room_126.id,
-            member_ids_csv=solo_girl.id, status=BookingStatus.confirmed, confirmed_at=now,
-        ))
-
-        # ---------- Seed Initial Services & Notifications for Avleen ----------
+        # ---------- Avleen's demo data (services, notifications...) ----------
         from app.models.models import ServiceRequest, Notification, MessFeedback, VisitorRequest, LeaveRequest, AmenityBooking
         db.add(ServiceRequest(
             user_id=avleen.id, category="Maintenance", subject="Room Cleaning Request",
@@ -358,108 +263,41 @@ async def seed_initial_data():
             user_id=avleen.id, title="Mess Menu Updated", message="The mess menu for this week has been published.", category="Notice", is_read=False
         ))
         db.add(Notification(
-            user_id=avleen.id, title="Hostel Fee Reminder", message="Hostel fee payment of ₹60,000 is due.", category="Payment", is_read=False
+            user_id=avleen.id, title="Hostel Preferences Open", message="Create or join a group, then rank your preferred hostels.", category="System", is_read=False
         ))
-        db.add(Notification(
-            user_id=avleen.id, title="Room Allocated", message="Your allocation in Room 126 (Pavani Hall) is reserved.", category="System", is_read=True
-        ))
-        db.add(MessFeedback(
-            user_id=avleen.id, rating=5, comment="Great Rajma Chawal today!"
-        ))
+        db.add(MessFeedback(user_id=avleen.id, rating=5, comment="Great Rajma Chawal today!"))
         db.add(VisitorRequest(
             user_id=avleen.id, visitor_name="Gurpreet Singh Kaur", phone="+91 98765 43210",
             relationship="Father", visit_date="2026-09-10", expected_arrival="10:00 AM", expected_departure="04:00 PM", status="Approved"
         ))
         db.add(LeaveRequest(
             user_id=avleen.id, request_type="Day Out", destination="Sector 17, Chandigarh",
-            reason="Shopping and personal work", start_date="2026-09-06", end_date="2026-09-06", expected_return="08:00 PM", emergency_contact="+91 98765 43210", status="Approved"
+            reason="Shopping and personal work", start_date="2026-09-06", end_date="2026-09-06",
+            expected_return="08:00 PM", emergency_contact="+91 98765 43210", status="Approved"
         ))
         db.add(AmenityBooking(
-            user_id=avleen.id, amenity_name="Study Room 3B", booking_date="2026-09-05", time_slot="06:00 PM - 08:00 PM", status="Confirmed"
+            user_id=avleen.id, amenity_name="Study Room 3B", booking_date="2026-09-05",
+            time_slot="06:00 PM - 08:00 PM", status="Confirmed"
         ))
 
-        # ---------- Allocation settings (admin-controlled billing-day window) ----------
+        # ---------- Allocation settings ----------
+        now = datetime.now(timezone.utc)
         db.add(AllocationSettings(
             id="singleton",
-            allotment_date=None,          # admin must set this explicitly
+            # Room-allotment ("billing day") window: admin sets this after hostels are allotted.
+            allotment_date=None,
             window_start_time="09:00",
             window_end_time="18:00",
             manual_override_open=False,
             manual_override_closed=False,
+            # Hostel preference window: open now for HOSTEL_PREF_DAYS days.
             hostel_allocation_run=False,
             hostel_preferences_open=True,
-            hostel_pref_date=None,
-            hostel_pref_start_time="09:00",
-            hostel_pref_end_time="18:00",
+            hostel_pref_opens_at=now - timedelta(hours=1),
+            hostel_pref_closes_at=now + timedelta(days=HOSTEL_PREF_DAYS),
             hostel_pref_manual_override_open=False,
             hostel_pref_manual_override_closed=False,
         ))
-
-        await db.commit()
-
-        # ============================================================
-        # NOW actually fire the live payment-triggered algorithm for
-        # Scenario 3's first payment, so the resulting Booking/Room state
-        # is produced by the real code path (not hand-seeded) - this is
-        # the scenario that demonstrates "1 of 4 pays -> whole empty
-        # cluster locks immediately".
-        # ============================================================
-        first_payment.status = PaymentStatus.paid
-        first_payment.transaction_ref = "SIMPAY-DEMO0004"
-        await db.commit()
-        await handle_group_payment_paid(db, first_payment.id)
-
-        # ============================================================
-        # Scenario 5: "empty clusters have run out" chunk-split demo.
-        # Fill EVERY cluster on Neeram Hall's floor 1 except one, so that
-        # when a fresh 4-member group's first payment lands, there is no
-        # single fully-empty (or even whole-group-sized) cluster left on
-        # that floor and the group has to be split into two 2-person
-        # chunks placed near each other.
-        # ============================================================
-        neeram = hostels["Neeram Hall"]
-        for cluster_num in range(1, CLUSTERS_PER_FLOOR + 1):
-            if cluster_num == 29:
-                continue  # leave this one with exactly 2 free seats (not 4)
-            await _fill_cluster_completely(db, neeram, 1, cluster_num)
-        # Cluster 29 starts with room A half-full so only 2 seats remain total,
-        # not enough for a 4-person group but enough for one 2-person chunk.
-        cluster_29 = await _get_cluster(db, neeram, 1, 29)
-        rooms_29 = await _get_rooms(db, cluster_29)
-        rooms_29["A"].occupied_count = 2
-        await db.commit()
-
-        chunk_leader = students[21]
-        chunk_m2 = students[23]
-        chunk_m3 = students[25]
-        chunk_m4 = students[27]
-        for u in (chunk_leader, chunk_m2, chunk_m3, chunk_m4):
-            u.gender = GenderEnum.male
-
-        group_chunk = Group(
-            code="SPLIT01", leader_id=chunk_leader.id, size_limit=4, status=GroupStatus.confirmed,
-            booking_ready_at=now, assigned_hostel_id=neeram.id, hostel_locked_at=now,
-        )
-        db.add(group_chunk)
-        await db.flush()
-        for u in (chunk_leader, chunk_m2, chunk_m3, chunk_m4):
-            u.group_id = group_chunk.id
-            u.assigned_hostel_id = neeram.id
-
-        db.add(HostelPreference(group_id=group_chunk.id, hostel_ids_csv=f"{neeram.id}"))
-        db.add(Preference(group_id=group_chunk.id, cluster_id=cluster_29.id, rank=1))
-        chunk_payment = Payment(
-            user_id=chunk_leader.id, group_id=group_chunk.id, transaction_ref="SIMPAY-DEMO0100",
-            amount=HOSTEL_FEE, status=PaymentStatus.pending,
-        )
-        db.add(chunk_payment)
-        for i, u in enumerate((chunk_m2, chunk_m3, chunk_m4), start=101):
-            db.add(Payment(user_id=u.id, group_id=group_chunk.id, amount=HOSTEL_FEE, status=PaymentStatus.pending))
-        await db.commit()
-
-        chunk_payment.status = PaymentStatus.paid
-        await db.commit()
-        await handle_group_payment_paid(db, chunk_payment.id)
 
         await db.commit()
 

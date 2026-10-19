@@ -19,6 +19,17 @@ class Settings(BaseSettings):
 
     RESERVATION_TTL_MINUTES: int = 15
 
+    # ---- Hostel preference stage ----
+    # A group leader (or solo student) must rank between MIN and MAX hostels.
+    # If a gender has fewer hostels than MIN, the minimum drops to however many exist.
+    HOSTEL_PREF_MIN: int = 5
+    HOSTEL_PREF_MAX: int = 6
+    # Default length of the preference window when the admin clicks "Open now".
+    HOSTEL_PREF_DEFAULT_DAYS: int = 4
+
+    # Admin "Test lab" (synthetic payments / random allotment / resets). Development only!
+    ENABLE_TEST_LAB: bool = True
+
     class Config:
         env_file = ".env"
         extra = "ignore"
